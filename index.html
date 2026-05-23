@@ -81,29 +81,42 @@
         <section id="tab-workout" class="space-y-6">
             
             <!-- Состояние: Тренировка не запущена -->
-            <div id="workout-idle-state" class="bg-brand-card rounded-2xl p-6 border border-zinc-800 text-center space-y-4">
-                <div class="mx-auto w-12 h-12 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
-                    <i data-lucide="play" class="w-6 h-6 text-brand"></i>
-                </div>
-                <div class="space-y-1">
-                    <h3 class="font-bold text-zinc-200 text-base">Готовы к тренировке?</h3>
-                    <p class="text-xs text-zinc-400">Выберите программу или начните свободную тренировку, чтобы отслеживать прогрессию.</p>
-                </div>
-                
-                <div class="space-y-2 pt-2">
-                    <div>
-                        <label class="block text-left text-[10px] text-zinc-500 mb-1 uppercase font-bold tracking-wider">Выбрать программу:</label>
-                        <select id="start-routine-select" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand">
-                            <!-- Заполняется динамически -->
-                        </select>
+            <div id="workout-idle-state" class="space-y-6">
+                <div class="bg-brand-card rounded-2xl p-6 border border-zinc-800 text-center space-y-4">
+                    <div class="mx-auto w-12 h-12 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
+                        <i data-lucide="play" class="w-6 h-6 text-brand"></i>
                     </div>
-                    <button onclick="startWorkoutSession()" class="w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-200 flex items-center justify-center gap-2">
-                        <i data-lucide="zap" class="w-4 h-4"></i>
-                        Начать тренировку по программе
-                    </button>
-                    <button onclick="startWorkoutSession(true)" class="w-full bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-semibold py-2.5 rounded-xl border border-zinc-800 transition text-xs">
-                        Свободная тренировка (без программы)
-                    </button>
+                    <div class="space-y-1">
+                        <h3 class="font-bold text-zinc-200 text-base">Готовы к тренировке?</h3>
+                        <p class="text-xs text-zinc-400">Выберите программу или начните свободную тренировку, чтобы отслеживать прогрессию.</p>
+                    </div>
+                    
+                    <div class="space-y-2 pt-2">
+                        <div>
+                            <label class="block text-left text-[10px] text-zinc-500 mb-1 uppercase font-bold tracking-wider">Выбрать программу:</label>
+                            <select id="start-routine-select" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand">
+                                <!-- Заполняется динамически -->
+                            </select>
+                        </div>
+                        <button onclick="startWorkoutSession()" class="w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-200 flex items-center justify-center gap-2">
+                            <i data-lucide="zap" class="w-4 h-4"></i>
+                            Начать тренировку по программе
+                        </button>
+                        <button onclick="startWorkoutSession(true)" class="w-full bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-semibold py-2.5 rounded-xl border border-zinc-800 transition text-xs">
+                            Свободная тренировка (без программы)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Архив прошлых тренировок -->
+                <div class="space-y-3">
+                    <h3 class="font-bold text-zinc-300 text-sm flex items-center gap-2 px-1">
+                        <i data-lucide="calendar" class="w-4 h-4 text-brand"></i>
+                        История тренировок
+                    </h3>
+                    <div id="workout-history-list" class="space-y-2.5">
+                        <!-- Заполняется динамически -->
+                    </div>
                 </div>
             </div>
 
@@ -518,6 +531,55 @@
                 <button onclick="closeConfirm(false)" class="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold rounded-xl text-sm transition">Отмена</button>
                 <button onclick="closeConfirm(true)" class="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-xl text-sm transition">Да, сделать</button>
             </div>
+    </div>
+
+    <!-- МОДАЛКА ДЕТАЛЕЙ ТРЕНИРОВКИ -->
+    <div id="workout-details-modal" class="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-brand-card border border-zinc-800 p-5 rounded-2xl max-w-sm w-full space-y-4 max-h-[85vh] flex flex-col">
+            <div class="flex items-center justify-between border-b border-zinc-800 pb-3 flex-shrink-0">
+                <div>
+                    <h3 class="font-bold text-zinc-100 text-base" id="detail-modal-title">Детали тренировки</h3>
+                    <span class="text-[10px] text-zinc-500 font-mono" id="detail-modal-date">--</span>
+                </div>
+                <button onclick="closeWorkoutDetails()" class="text-zinc-400 hover:text-zinc-200 p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="overflow-y-auto pr-1 flex-1 py-1 space-y-3 font-medium" id="detail-modal-logs">
+                <!-- Рендерится динамически: Упражнения и подходы -->
+            </div>
+            <div class="flex gap-3 pt-3 border-t border-zinc-800 flex-shrink-0">
+                <button onclick="deleteWorkoutSessionFromDetail()" class="flex-1 py-2.5 bg-red-600/10 border border-red-500/20 hover:bg-red-500/20 text-red-400 font-semibold rounded-xl text-[11px] transition flex items-center justify-center gap-1">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    Удалить
+                </button>
+                <button onclick="closeWorkoutDetails()" class="flex-1 py-2.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-[11px] transition">
+                    Закрыть
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- МОДАЛКА ДЕТАЛЕЙ МЫШЦЫ -->
+    <div id="muscle-drilldown-modal" class="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-brand-card border border-zinc-800 p-5 rounded-2xl max-w-sm w-full space-y-4 max-h-[80vh] flex flex-col">
+            <div class="flex items-center justify-between border-b border-zinc-800 pb-3 flex-shrink-0">
+                <div>
+                    <h3 class="font-bold text-zinc-100 text-base" id="muscle-modal-title">Детализация мышцы</h3>
+                    <span class="text-[10px] text-zinc-400 font-medium" id="muscle-modal-subtitle">Работа за последние 7 дней</span>
+                </div>
+                <button onclick="closeMuscleDrilldown()" class="text-zinc-400 hover:text-zinc-200 p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="overflow-y-auto pr-1 flex-1 py-1 space-y-3" id="muscle-modal-content">
+                <!-- Рендерится динамически: Упражнения и их вклад -->
+            </div>
+            <div class="pt-2 border-t border-zinc-800 flex-shrink-0">
+                <button onclick="closeMuscleDrilldown()" class="w-full py-2.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-xs transition">
+                    Закрыть
+                </button>
+            </div>
         </div>
     </div>
 
@@ -660,6 +722,7 @@
             await loadExercisesInSelect();
             await loadAllExercisesList();
             await updateStatistics();
+            await loadWorkoutHistory();
 
             restoreSessionFromStorage();
             initPWA();
@@ -1314,6 +1377,7 @@
             stopTimer();
             buildActiveSessionUI();
             showToast("Тренировка завершена! Отличная работа!", "success");
+            await loadWorkoutHistory();
             switchTab('stats');
         }
 
@@ -1342,6 +1406,7 @@
             
             showToast("Тренировка отменена", "info");
             await updateStatistics();
+            await loadWorkoutHistory();
         }
 
         async function loadExercisesInSelect() {
@@ -1452,11 +1517,325 @@
             showToast('Подход удален', 'info');
             await loadTodayLogs();
             await updateStatistics();
+            await loadWorkoutHistory();
             
             const select = document.getElementById('active-exercise-select');
             if (select && select.value) {
                 updateProgressionAdvice(parseInt(select.value));
             }
+        }
+
+        let selectedHistorySessionId = null;
+        let selectedHistoryDate = null;
+
+        // Вспомогательная функция для эвристического определения названия тренировки
+        function getSessionName(sessionExerciseIds, programs) {
+            let bestProgram = null;
+            let maxOverlap = 0;
+            
+            const sessionSet = new Set(sessionExerciseIds);
+            
+            programs.forEach(p => {
+                const overlap = p.exerciseIds.filter(id => sessionSet.has(id)).length;
+                if (overlap > maxOverlap) {
+                    maxOverlap = overlap;
+                    bestProgram = p;
+                }
+            });
+            
+            if (bestProgram && maxOverlap >= Math.min(2, sessionExerciseIds.length)) {
+                return bestProgram.name;
+            }
+            return "Свободная тренировка";
+        }
+
+        async function loadWorkoutHistory() {
+            const historyList = document.getElementById('workout-history-list');
+            if (!historyList) return;
+
+            const logs = await db.workoutLogs.toArray();
+            const exercises = await db.exercises.toArray();
+            const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+            const programs = await db.programs.toArray();
+            const bodyWeight = getBodyWeight();
+
+            if (logs.length === 0) {
+                historyList.innerHTML = `
+                    <div class="text-center py-8 text-zinc-500 text-xs bg-brand-card rounded-xl border border-zinc-800 border-dashed">
+                        История тренировок пуста. Завершите свою первую тренировку!
+                    </div>
+                `;
+                return;
+            }
+
+            // Группируем логи по sessionId (или по дате, если sessionId отсутствует)
+            const sessions = {};
+            logs.forEach(log => {
+                const key = log.sessionId || ('date-' + log.date);
+                if (!sessions[key]) {
+                    sessions[key] = {
+                        key,
+                        sessionId: log.sessionId || null,
+                        date: log.date,
+                        logs: []
+                    };
+                }
+                sessions[key].logs.push(log);
+            });
+
+            // Сортируем сессии: сначала новые
+            const sortedSessions = Object.values(sessions).sort((a, b) => b.date.localeCompare(a.date));
+
+            historyList.innerHTML = sortedSessions.map(session => {
+                const sessionExerciseIds = [...new Set(session.logs.map(l => l.exerciseId))];
+                const sessionName = getSessionName(sessionExerciseIds, programs);
+                
+                const dateObj = new Date(session.date);
+                const formattedDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+
+                const setCount = session.logs.length;
+                const uniqExCount = sessionExerciseIds.length;
+
+                // Считаем общий тоннаж сессии с учетом веса тела
+                const totalTonnage = session.logs.reduce((sum, log) => {
+                    const ex = exerciseMap[log.exerciseId];
+                    const effW = log.weight + (ex && ex.usesBodyweight ? bodyWeight : 0);
+                    return sum + (effW * log.reps);
+                }, 0);
+
+                const sessIdStr = session.sessionId ? `'${session.sessionId}'` : 'null';
+
+                return `
+                    <div onclick="showWorkoutDetails(${sessIdStr}, '${session.date}')" 
+                         class="bg-brand-card p-3.5 rounded-xl border border-zinc-800 flex items-center justify-between hover:border-zinc-700/80 active:scale-[0.98] transition duration-150 cursor-pointer">
+                        <div class="space-y-0.5">
+                            <span class="text-[9px] text-brand uppercase font-extrabold tracking-wider block">${sessionName}</span>
+                            <span class="text-xs font-semibold text-zinc-200 block">${formattedDate}</span>
+                            <div class="text-[10px] text-zinc-500 flex items-center gap-1.5 font-medium">
+                                <span>Упражнений: ${uniqExCount}</span>
+                                <span class="text-zinc-700">•</span>
+                                <span>Подходов: ${setCount}</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs font-mono font-bold text-zinc-100 block">${Math.round(totalTonnage)} кг</span>
+                            <span class="text-[8px] text-zinc-500 block uppercase tracking-wider font-semibold">Тоннаж</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function showWorkoutDetails(sessionId, date) {
+            selectedHistorySessionId = sessionId;
+            selectedHistoryDate = date;
+
+            const modal = document.getElementById('workout-details-modal');
+            const titleEl = document.getElementById('detail-modal-title');
+            const dateEl = document.getElementById('detail-modal-date');
+            const logsEl = document.getElementById('detail-modal-logs');
+
+            if (!modal || !logsEl) return;
+
+            // Вытягиваем логи
+            let sessionLogs = [];
+            if (sessionId) {
+                sessionLogs = await db.workoutLogs.where('sessionId').equals(sessionId).toArray();
+            } else {
+                sessionLogs = await db.workoutLogs.where('date').equals(date).filter(l => !l.sessionId).toArray();
+            }
+
+            const exercises = await db.exercises.toArray();
+            const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+            const programs = await db.programs.toArray();
+
+            const sessionExerciseIds = [...new Set(sessionLogs.map(l => l.exerciseId))];
+            const sessionName = getSessionName(sessionExerciseIds, programs);
+            
+            const dateObj = new Date(date);
+            const formattedDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+
+            if (titleEl) titleEl.innerText = sessionName;
+            if (dateEl) dateEl.innerText = formattedDate;
+
+            // Группируем логи по упражнениям
+            const logsByExercise = {};
+            sessionLogs.forEach(log => {
+                if (!logsByExercise[log.exerciseId]) {
+                    logsByExercise[log.exerciseId] = [];
+                }
+                logsByExercise[log.exerciseId].push(log);
+            });
+
+            logsEl.innerHTML = Object.entries(logsByExercise).map(([exId, logs]) => {
+                const ex = exerciseMap[exId] || { name: 'Удаленное упражнение', usesBodyweight: 0 };
+                const setsHtml = logs.map((log, index) => {
+                    let weightText = `${log.weight}`;
+                    if (ex.usesBodyweight) {
+                        weightText = `св${log.weight > 0 ? '+' + log.weight : log.weight < 0 ? log.weight : ''}`;
+                    }
+                    return `
+                        <span class="inline-block bg-zinc-900 border border-zinc-800 text-[10px] px-2.5 py-1 rounded font-mono text-zinc-300">
+                            ${index + 1}: ${weightText} × ${log.reps}
+                        </span>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="space-y-1.5 bg-zinc-900/40 p-2.5 rounded-xl border border-zinc-850">
+                        <div class="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                            <i data-lucide="dumbbell" class="w-3.5 h-3.5 text-zinc-500"></i>
+                            ${ex.name}
+                        </div>
+                        <div class="flex flex-wrap gap-1.5">
+                            ${setsHtml}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            modal.classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeWorkoutDetails() {
+            const modal = document.getElementById('workout-details-modal');
+            if (modal) modal.classList.add('hidden');
+            selectedHistorySessionId = null;
+            selectedHistoryDate = null;
+        }
+
+        async function deleteWorkoutSessionFromDetail() {
+            const conf = await showConfirm("Вы действительно хотите удалить эту тренировку и все записанные в ней подходы?");
+            if (!conf) return;
+
+            if (selectedHistorySessionId) {
+                await db.workoutLogs.where('sessionId').equals(selectedHistorySessionId).delete();
+            } else if (selectedHistoryDate) {
+                await db.workoutLogs.where('date').equals(selectedHistoryDate).filter(l => !l.sessionId).delete();
+            }
+
+            closeWorkoutDetails();
+            showToast("Тренировка успешно удалена", "info");
+            
+            await loadWorkoutHistory();
+            await updateStatistics();
+            await loadTodayLogs();
+        }
+
+        async function showMuscleDrilldown(muscleKey) {
+            const modal = document.getElementById('muscle-drilldown-modal');
+            const titleEl = document.getElementById('muscle-modal-title');
+            const contentEl = document.getElementById('muscle-modal-content');
+            if (!modal || !contentEl) return;
+
+            const logs = await db.workoutLogs.toArray();
+            const exercises = await db.exercises.toArray();
+            const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+            const bodyWeight = getBodyWeight();
+            const weeks = getRollingPeriods();
+
+            // Фильтруем логи за последние 7 дней (текущее скользящее окно)
+            const currentWeekLogs = logs.filter(l => l.date >= weeks.currentStart && l.date <= weeks.currentEnd);
+
+            // Накапливаем вклад каждого упражнения, задействовавшего muscleKey
+            // Группируем по exerciseId
+            const contribution = {}; // map: exerciseId -> { exercise, setsCount, value, role }
+            
+            currentWeekLogs.forEach(log => {
+                const ex = exerciseMap[log.exerciseId];
+                if (!ex) return;
+
+                let role = '';
+                let coeff = 0;
+
+                if (ex.primaryMuscle === muscleKey) {
+                    role = 'Основная';
+                    coeff = 1.0;
+                } else if (ex.secondaryMuscle === muscleKey) {
+                    role = 'Вторичная';
+                    coeff = ex.secondaryCoeff || 0;
+                } else if (ex.tertiaryMuscle === muscleKey) {
+                    role = 'Стабилизатор';
+                    coeff = ex.tertiaryCoeff || 0;
+                }
+
+                if (coeff > 0) {
+                    if (!contribution[log.exerciseId]) {
+                        contribution[log.exerciseId] = {
+                            exercise: ex,
+                            setsCount: 0,
+                            value: 0,
+                            role: role
+                        };
+                    }
+                    
+                    contribution[log.exerciseId].setsCount += 1;
+                    
+                    if (statsMode === 'sets') {
+                        contribution[log.exerciseId].value += coeff;
+                    } else {
+                        const effW = log.weight + (ex.usesBodyweight ? bodyWeight : 0);
+                        contribution[log.exerciseId].value += effW * log.reps * coeff;
+                    }
+                }
+            });
+
+            const sortedContributions = Object.values(contribution).sort((a, b) => b.value - a.value);
+
+            if (titleEl) {
+                const muscleName = MUSCLE_NAMES[muscleKey] || muscleKey;
+                titleEl.innerText = muscleName;
+            }
+
+            if (sortedContributions.length === 0) {
+                contentEl.innerHTML = `
+                    <div class="text-center py-6 text-zinc-500 text-xs">
+                        Нет упражнений за последние 7 дней на эту группу мышц.
+                    </div>
+                `;
+            } else {
+                contentEl.innerHTML = sortedContributions.map(c => {
+                    const valueFormatted = statsMode === 'sets' 
+                        ? `${Number(c.value.toFixed(1))} подх. (всего ${c.setsCount} подх.)`
+                        : `${Math.round(c.value)} кг`;
+
+                    let roleBadgeColor = 'bg-zinc-800 text-zinc-400 border-zinc-700';
+                    if (c.role === 'Основная') {
+                        roleBadgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                    } else if (c.role === 'Вторичная') {
+                        roleBadgeColor = 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20';
+                    }
+
+                    return `
+                        <div class="bg-zinc-900/40 p-3 rounded-xl border border-zinc-850 flex items-center justify-between gap-3">
+                            <div class="space-y-1 min-w-0">
+                                <div class="text-xs font-bold text-zinc-200 truncate flex items-center gap-1.5">
+                                    <i data-lucide="dumbbell" class="w-3.5 h-3.5 text-zinc-500 flex-shrink-0"></i>
+                                    <span class="truncate">${c.exercise.name}</span>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="px-1.5 py-0.5 border text-[8px] font-bold rounded uppercase ${roleBadgeColor}">
+                                        ${c.role}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="text-right flex-shrink-0">
+                                <span class="text-xs font-mono font-bold text-zinc-100 block">${valueFormatted}</span>
+                                <span class="text-[8px] text-zinc-500 block uppercase tracking-wider font-semibold">Нагрузка</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                lucide.createIcons();
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeMuscleDrilldown() {
+            const modal = document.getElementById('muscle-drilldown-modal');
+            if (modal) modal.classList.add('hidden');
         }
 
         async function loadAllExercisesList() {
@@ -1864,7 +2243,7 @@
                 }
 
                 return `
-                    <div class="space-y-1">
+                    <div onclick="showMuscleDrilldown('${muscle.key}')" class="space-y-1 cursor-pointer hover:bg-zinc-800/30 -mx-2 px-2 py-1.5 rounded-xl transition duration-150">
                         <div class="flex justify-between items-center text-xs">
                             <div class="flex items-center gap-1.5">
                                 <span class="font-medium text-zinc-300 text-[11px]">${muscle.name}</span>
@@ -2049,7 +2428,7 @@
             }
         }
 
-        function switchTab(tabName) {
+        async function switchTab(tabName) {
             const sections = ['workout', 'programs', 'stats', 'exercises', 'settings'];
             sections.forEach(sec => {
                 const el = document.getElementById(`tab-${sec}`);
@@ -2074,6 +2453,7 @@
                 loadRoutinesInSelectors();
             } else if (tabName === 'workout') {
                 buildActiveSessionUI();
+                await loadWorkoutHistory();
             }
         }
 
@@ -2135,6 +2515,7 @@
                     await loadExercisesInSelect();
                     await loadAllExercisesList();
                     await updateStatistics();
+                    await loadWorkoutHistory();
                     buildActiveSessionUI();
                     
                 } catch (e) {
@@ -2164,6 +2545,7 @@
             await loadExercisesInSelect();
             await loadAllExercisesList();
             await updateStatistics();
+            await loadWorkoutHistory();
             buildActiveSessionUI();
         }
 
