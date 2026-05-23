@@ -124,7 +124,7 @@
                 <div class="bg-brand-card rounded-2xl p-4 border border-zinc-800 space-y-3">
                     <label class="block text-xs font-semibold text-zinc-400">Выберите упражнение для выполнения:</label>
                     <div id="active-session-exercises-list" class="flex flex-wrap gap-2">
-                        <!-- Заполняется кнопками упражнений текущей программы -->
+                        <!-- Заполняется кнопками упражнений -->
                     </div>
                 </div>
 
@@ -164,7 +164,7 @@
                         <div>
                             <label class="block text-xs text-zinc-400 mb-1">Вес (кг)</label>
                             <div class="relative">
-                                <input type="number" id="input-weight" placeholder="0" step="0.5" min="0" 
+                                <input type="number" id="input-weight" placeholder="0" step="0.5" min="-100" 
                                        class="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-10 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand font-mono">
                                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">кг</span>
                             </div>
@@ -263,29 +263,39 @@
 
         <!-- ВКЛАДКА 3: АНАТОМИЧЕСКАЯ АНАЛИТИКА -->
         <section id="tab-stats" class="space-y-6 hidden">
+            <!-- Переключатель режима статистики -->
+            <div class="bg-zinc-900 p-1 rounded-xl border border-zinc-800 flex">
+                <button id="btn-mode-sets" onclick="setStatsMode('sets')" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-black bg-brand">
+                    Подходы (7 дней)
+                </button>
+                <button id="btn-mode-tonnage" onclick="setStatsMode('tonnage')" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-zinc-400">
+                    Тоннаж (Общий кг)
+                </button>
+            </div>
+
             <div class="grid grid-cols-2 gap-3">
                 <div class="bg-brand-card p-4 rounded-xl border border-zinc-800">
-                    <span class="text-xs text-zinc-400 block">Всего подходов</span>
-                    <span class="text-xl font-mono font-bold text-brand" id="total-sets-count">0</span>
+                    <span class="text-xs text-zinc-400 block" id="stats-card-left-title">Подходы за последние 7 дней</span>
+                    <span class="text-xl font-mono font-bold text-brand" id="stats-card-left-val">0</span>
                 </div>
                 <div class="bg-brand-card p-4 rounded-xl border border-zinc-800">
-                    <span class="text-xs text-zinc-400 block">Тоннаж (7 дней)</span>
-                    <span class="text-xl font-mono font-bold text-brand" id="weekly-tonnage">0 кг</span>
+                    <span class="text-xs text-zinc-400 block" id="stats-card-right-title">Подходы за предыдущие 7 дней</span>
+                    <span class="text-xl font-mono font-bold text-brand" id="stats-card-right-val">0</span>
                 </div>
             </div>
 
-            <!-- Распределение нагрузки по 15 группам мышц -->
+            <!-- Распределение нагрузки -->
             <div class="bg-brand-card p-5 rounded-2xl border border-zinc-800 space-y-4">
                 <div>
-                    <h3 class="font-bold text-zinc-200">Микроанатомическая карта</h3>
-                    <p class="text-xs text-zinc-400 leading-relaxed">Распределение нагрузки по детальным группам мышц с учетом синергии и веса.</p>
+                    <h3 class="font-bold text-zinc-200" id="stats-chart-title">Анатомический объем нагрузки</h3>
+                    <p class="text-xs text-zinc-400 leading-relaxed" id="stats-chart-desc">Распределение подходов по детальным группам мышц с учетом синергии и нормы за последние 7 дней.</p>
                 </div>
                 
-                <div id="muscle-progress-bars" class="space-y-3 pt-2">
+                <div id="muscle-progress-bars" class="space-y-3 pt-2 border-b border-zinc-800/50 pb-4">
                     <!-- Рендерится динамически -->
                 </div>
 
-                <div class="border-t border-zinc-800 pt-4">
+                <div class="pt-2">
                     <h4 class="text-xs font-semibold text-zinc-400 mb-2">Общая диаграмма синергии</h4>
                     <div class="relative w-full h-80 flex items-center justify-center">
                         <canvas id="muscleChart"></canvas>
@@ -296,8 +306,8 @@
             <!-- Хронология тренировок -->
             <div class="bg-brand-card p-5 rounded-2xl border border-zinc-800 space-y-4">
                 <div>
-                    <h3 class="font-bold text-zinc-200">История по дням</h3>
-                    <p class="text-xs text-zinc-400">Суммарный накопленный объем нагрузок</p>
+                    <h3 class="font-bold text-zinc-200" id="history-chart-title">История по дням</h3>
+                    <p class="text-xs text-zinc-400" id="history-chart-desc">Суммарный накопленный объем нагрузок</p>
                 </div>
                 <div class="relative w-full h-48 flex items-center justify-center">
                     <canvas id="historyChart"></canvas>
@@ -413,7 +423,7 @@
                     Нажмите на значок <strong class="text-zinc-200">«Поделиться»</strong> в Safari (на iPhone) или <strong class="text-zinc-200">«Три точки»</strong> в Chrome (на Android) и выберите <strong class="text-zinc-200">«Добавить на экран "Домой"»</strong>. Дневник сможет запускаться автономно без интернета.
                 </p>
                 <div class="pt-2 text-[10px] text-zinc-500 font-mono">
-                    AnatomyFit Engine v3.0 (Progression Advisor)
+                    AnatomyFit Engine v3.3 (Rolling 7-Day Window Analysis)
                 </div>
             </div>
         </section>
@@ -471,12 +481,24 @@
     </div>
 
     <script>
+        // Глобальная переменная текущего режима отображения статистики ('sets' или 'tonnage')
+        let statsMode = 'sets';
+
+        // Глобальная функция регулировки веса и повторений
+        function adjustValue(inputId, delta) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            let val = parseFloat(input.value) || 0;
+            val = Math.max(-100, val + delta); // Поддержка компенсационных подтягиваний (отрицательный вес)
+            input.value = val;
+        }
+
         // Инициализация базы данных Dexie
         const db = new Dexie('AnatomyFitDB_v3');
         db.version(3).stores({
             exercises: '++id, name, isCustom, primaryMuscle, secondaryMuscle, secondaryCoeff, tertiaryMuscle, tertiaryCoeff',
             workoutLogs: '++id, date, exerciseId, weight, reps, sessionId',
-            programs: '++id, name, exerciseIds' // exerciseIds будет храниться массивом [id1, id2, ...]
+            programs: '++id, name, exerciseIds'
         });
 
         // 15 Групп мышц
@@ -498,6 +520,25 @@
             glutes: 'Ягодицы'
         };
 
+        // Научно-обоснованные рекомендуемые нормы подходов на каждую группу в неделю
+        const MUSCLE_WEEKLY_TARGETS = {
+            chest: { min: 10, max: 16 },
+            front_delts: { min: 6, max: 10 },
+            side_delts: { min: 8, max: 14 },
+            rear_delts: { min: 8, max: 14 },
+            traps: { min: 4, max: 10 },
+            lats: { min: 10, max: 16 },
+            erectors: { min: 6, max: 10 },
+            abs: { min: 6, max: 12 },
+            biceps: { min: 8, max: 14 },
+            triceps: { min: 8, max: 14 },
+            forearms: { min: 4, max: 8 },
+            quads: { min: 10, max: 16 },
+            hamstrings: { min: 8, max: 14 },
+            calves: { min: 6, max: 10 },
+            glutes: { min: 8, max: 14 }
+        };
+
         const DEFAULT_EXERCISES = [
             { name: 'Жим лежа на горизонтальной скамье', primaryMuscle: 'chest', secondaryMuscle: 'front_delts', secondaryCoeff: 0.6, tertiaryMuscle: 'triceps', tertiaryCoeff: 0.5, isCustom: 0 },
             { name: 'Подтягивания широким хватом', primaryMuscle: 'lats', secondaryMuscle: 'biceps', secondaryCoeff: 0.6, tertiaryMuscle: 'rear_delts', tertiaryCoeff: 0.4, isCustom: 0 },
@@ -510,7 +551,7 @@
             { name: 'Румынская тяга со штангой', primaryMuscle: 'hamstrings', secondaryMuscle: 'glutes', secondaryCoeff: 0.8, tertiaryMuscle: 'erectors', tertiaryCoeff: 0.5, isCustom: 0 },
             { name: 'Подъем штанги на бицепс', primaryMuscle: 'biceps', secondaryMuscle: 'forearms', secondaryCoeff: 0.4, tertiaryMuscle: '', tertiaryCoeff: 0, isCustom: 0 },
             { name: 'Подъем на икры стоя', primaryMuscle: 'calves', secondaryMuscle: '', secondaryCoeff: 0, tertiaryMuscle: '', tertiaryCoeff: 0, isCustom: 0 },
-            { name: 'Скручивания на римском стуле', primaryMuscle: 'abs', secondaryMuscle: '', secondaryCoeff: 0, tertiaryMuscle: '', tertiaryCoeff: 0, isCustom: 0 },
+            { name: 'Скручивания на пресс', primaryMuscle: 'abs', secondaryMuscle: '', secondaryCoeff: 0, tertiaryMuscle: '', tertiaryCoeff: 0, isCustom: 0 },
             { name: 'Ягодичный мостик со штангой', primaryMuscle: 'glutes', secondaryMuscle: 'hamstrings', secondaryCoeff: 0.5, tertiaryMuscle: 'erectors', tertiaryCoeff: 0.3, isCustom: 0 }
         ];
 
@@ -520,18 +561,16 @@
             { name: 'Тяни-Толкай (День Б - Тяни)', exerciseIds: [2, 5, 6, 10] }
         ];
 
-        let activeSession = null; // Будет хранить { type: 'free'|'routine', id: programId|null, exerciseIds: [...] }
-        let selectedExercisesForCreation = []; // Временный массив для сборщика программы
+        let activeSession = null;
+        let selectedExercisesForCreation = [];
         let muscleChart = null;
         let historyChart = null;
         let pendingConfirmResolve = null;
 
-        // При загрузке страницы
         window.addEventListener('DOMContentLoaded', async () => {
             lucide.createIcons();
             setupSliders();
 
-            // Дефолтное наполнение базы, если пуста
             if (await db.exercises.count() === 0) {
                 await db.exercises.bulkAdd(DEFAULT_EXERCISES);
             }
@@ -545,35 +584,87 @@
             await loadAllExercisesList();
             await updateStatistics();
 
-            // Проверяем, была ли активная сессия в памяти
             restoreSessionFromStorage();
-
-            // Динамический манифест PWA
             initPWA();
         });
 
-        // Помощник для быстрой корректировки числовых значений
-        function adjustValue(inputId, delta) {
-            const input = document.getElementById(inputId);
-            if (!input) return;
-            let val = parseFloat(input.value) || 0;
-            val = Math.max(0, val + delta);
-            input.value = val;
+        // УМНЫЙ РАСЧЕТ ДВУХ СКОЛЬЗЯЩИХ ПЕРИОДОВ ПО 7 ДНЕЙ (Вместо календарных недель)
+        function getRollingPeriods() {
+            const now = new Date();
+            
+            const formatDate = (d) => {
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const date = String(d.getDate()).padStart(2, '0');
+                return `${year}-${month}-${date}`;
+            };
+            
+            const formatDisplayDate = (d) => {
+                return `${d.getDate()}.${String(d.getMonth()+1).padStart(2, '0')}`;
+            };
+
+            // Текущее скользящее окно: последние 7 дней [Сегодня - 6 дней, Сегодня]
+            const currentEnd = new Date(now);
+            const currentStart = new Date(now);
+            currentStart.setDate(now.getDate() - 6);
+            
+            // Предыдущее скользящее окно: [Сегодня - 13 дней, Сегодня - 7 дней]
+            const prevEnd = new Date(now);
+            prevEnd.setDate(now.getDate() - 7);
+            const prevStart = new Date(now);
+            prevStart.setDate(now.getDate() - 13);
+            
+            return {
+                currentStart: formatDate(currentStart),
+                currentEnd: formatDate(currentEnd),
+                prevStart: formatDate(prevStart),
+                prevEnd: formatDate(prevEnd),
+                currentRange: `${formatDisplayDate(currentStart)} - ${formatDisplayDate(currentEnd)}`,
+                prevRange: `${formatDisplayDate(prevStart)} - ${formatDisplayDate(prevEnd)}`
+            };
         }
 
-        // Настройка ползунков % в конструкторе
+        function setStatsMode(mode) {
+            statsMode = mode;
+            
+            const btnSets = document.getElementById('btn-mode-sets');
+            const btnTonnage = document.getElementById('btn-mode-tonnage');
+            
+            if (statsMode === 'sets') {
+                if (btnSets) {
+                    btnSets.className = "flex-1 py-2 text-xs font-bold rounded-lg transition-all text-black bg-brand";
+                }
+                if (btnTonnage) {
+                    btnTonnage.className = "flex-1 py-2 text-xs font-bold rounded-lg transition-all text-zinc-400 bg-transparent";
+                }
+            } else {
+                if (btnSets) {
+                    btnSets.className = "flex-1 py-2 text-xs font-bold rounded-lg transition-all text-zinc-400 bg-transparent";
+                }
+                if (btnTonnage) {
+                    btnTonnage.className = "flex-1 py-2 text-xs font-bold rounded-lg transition-all text-black bg-brand";
+                }
+            }
+
+            updateStatistics();
+        }
+
         function setupSliders() {
             const secSlider = document.getElementById('custom-secondary-coeff');
             const secLabel = document.getElementById('coeff-sec-label');
-            secSlider.addEventListener('input', () => {
-                secLabel.innerText = Math.round(secSlider.value * 100) + '%';
-            });
+            if (secSlider && secLabel) {
+                secSlider.addEventListener('input', () => {
+                    secLabel.innerText = Math.round(secSlider.value * 100) + '%';
+                });
+            }
 
             const tertSlider = document.getElementById('custom-tertiary-coeff');
             const tertLabel = document.getElementById('coeff-tert-label');
-            tertSlider.addEventListener('input', () => {
-                tertLabel.innerText = Math.round(tertSlider.value * 100) + '%';
-            });
+            if (tertSlider && tertLabel) {
+                tertSlider.addEventListener('input', () => {
+                    tertLabel.innerText = Math.round(tertSlider.value * 100) + '%';
+                });
+            }
         }
 
         function populateMuscleSelectors() {
@@ -581,63 +672,66 @@
             const secondarySelect = document.getElementById('custom-secondary');
             const tertiarySelect = document.getElementById('custom-tertiary');
 
+            if (!primarySelect) return;
+
             let optionsHtml = '';
             for (const [key, value] of Object.entries(MUSCLE_NAMES)) {
                 optionsHtml += `<option value="${key}">${value}</option>`;
             }
 
             primarySelect.innerHTML = optionsHtml;
-            secondarySelect.innerHTML += optionsHtml;
-            tertiarySelect.innerHTML += optionsHtml;
+            secondarySelect.innerHTML = '<option value="">-- Нет синергиста --</option>' + optionsHtml;
+            tertiarySelect.innerHTML = '<option value="">-- Нет стабилизатора --</option>' + optionsHtml;
         }
 
-        // Заполнение селекторов программ на вкладе тренировки и конструктора
         async function loadRoutinesInSelectors() {
             const routines = await db.programs.toArray();
-            
-            // Выбор старта тренировки
             const startSelect = document.getElementById('start-routine-select');
-            startSelect.innerHTML = routines.map(r => `
-                <option value="${r.id}">${r.name}</option>
-            `).join('');
+            
+            if (startSelect) {
+                startSelect.innerHTML = routines.map(r => `
+                    <option value="${r.id}">${r.name}</option>
+                `).join('');
+            }
 
-            // Отрисовка списка программ в вкладке Программы
             const listContainer = document.getElementById('programs-list-container');
             const exercises = await db.exercises.toArray();
             const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
 
-            listContainer.innerHTML = routines.map(r => {
-                const exNames = r.exerciseIds.map(id => exerciseMap[id]?.name || 'Удаленное упражнение').join(', ');
-                return `
-                    <div class="bg-brand-card p-4 rounded-xl border border-zinc-800 space-y-3">
-                        <div>
-                            <h4 class="font-bold text-zinc-100 text-sm">${r.name}</h4>
-                            <p class="text-[10px] text-zinc-400 leading-normal mt-1"><strong>Упражнения:</strong> ${exNames}</p>
+            if (listContainer) {
+                listContainer.innerHTML = routines.map(r => {
+                    const exNames = r.exerciseIds.map(id => exerciseMap[id]?.name || 'Упражнение').join(', ');
+                    return `
+                        <div class="bg-brand-card p-4 rounded-xl border border-zinc-800 space-y-3">
+                            <div>
+                                <h4 class="font-bold text-zinc-100 text-sm">${r.name}</h4>
+                                <p class="text-[10px] text-zinc-400 leading-normal mt-1"><strong>Упражнения:</strong> ${exNames}</p>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="startRoutineFromCard(${r.id})" class="flex-1 bg-brand/10 hover:bg-brand/20 text-brand text-xs font-bold py-2 rounded-lg transition flex items-center justify-center gap-1.5">
+                                    <i data-lucide="play" class="w-3.5 h-3.5"></i> Запустить
+                                </button>
+                                <button onclick="deleteRoutine(${r.id})" class="bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-red-400 px-3 rounded-lg transition">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
                         </div>
-                        <div class="flex gap-2">
-                            <button onclick="startRoutineFromCard(${r.id})" class="flex-1 bg-brand/10 hover:bg-brand/20 text-brand text-xs font-bold py-2 rounded-lg transition flex items-center justify-center gap-1.5">
-                                <i data-lucide="play" class="w-3.5 h-3.5"></i> Запустить
-                            </button>
-                            <button onclick="deleteRoutine(${r.id})" class="bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-red-400 px-3 rounded-lg transition">
-                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+                    `;
+                }).join('');
+            }
 
-            // Заполнение пула выбора для создания новой программы
             const poolContainer = document.getElementById('program-exercise-selector-pool');
-            poolContainer.innerHTML = exercises.map(ex => `
-                <button onclick="toggleExerciseForProgram(${ex.id}, this)" class="px-2 py-1 bg-zinc-900 border border-zinc-800 hover:border-brand/40 text-[10px] rounded-lg text-zinc-300 transition-all">
-                    ${ex.name}
-                </button>
-            `).join('');
+            if (poolContainer) {
+                poolContainer.innerHTML = exercises.map(ex => `
+                    <button onclick="toggleExerciseForProgram(${ex.id}, this)" class="px-2 py-1 bg-zinc-900 border border-zinc-800 hover:border-brand/40 text-[10px] rounded-lg text-zinc-300 transition-all">
+                        ${ex.name}
+                    </button>
+                `).join('');
+            }
 
             lucide.createIcons();
         }
 
-        // Выбор упражнений в сборщик программы
         async function toggleExerciseForProgram(id, el) {
             const index = selectedExercisesForCreation.indexOf(id);
             if (index === -1) {
@@ -648,8 +742,9 @@
                 el.classList.remove('border-brand', 'text-brand', 'bg-emerald-950/20');
             }
 
-            // Обновляем превью
             const preview = document.getElementById('selected-exercises-preview');
+            if (!preview) return;
+
             if (selectedExercisesForCreation.length === 0) {
                 preview.innerHTML = "Упражнения не выбраны. Кликните по упражнениям выше.";
                 return;
@@ -664,10 +759,9 @@
             `).join('');
         }
 
-        // Создать новую программу
         async function createNewProgram() {
             const nameInput = document.getElementById('program-name-input');
-            const name = nameInput.value.trim();
+            const name = nameInput ? nameInput.value.trim() : '';
 
             if (!name) {
                 showToast("Введите название программы тренировки", "error");
@@ -685,19 +779,18 @@
             });
 
             showToast("Программа создана успешно!", "success");
-            nameInput.value = '';
+            if (nameInput) nameInput.value = '';
             selectedExercisesForCreation = [];
             
-            // Сбрасываем стили кнопок пула
             const buttons = document.querySelectorAll('#program-exercise-selector-pool button');
             buttons.forEach(b => b.className = "px-2 py-1 bg-zinc-900 border border-zinc-800 hover:border-brand/40 text-[10px] rounded-lg text-zinc-300 transition-all");
 
-            document.getElementById('selected-exercises-preview').innerText = "Упражнения не выбраны. Кликните по упражнениям выше.";
+            const preview = document.getElementById('selected-exercises-preview');
+            if (preview) preview.innerText = "Упражнения не выбраны. Кликните по упражнениям выше.";
 
             await loadRoutinesInSelectors();
         }
 
-        // Удалить программу
         async function deleteRoutine(id) {
             const conf = await showConfirm("Вы уверены, что хотите удалить этот тренировочный шаблон?");
             if (!conf) return;
@@ -707,29 +800,14 @@
             await loadRoutinesInSelectors();
         }
 
-        // Запуск сессии из карточки на вкладке Программы
         function startRoutineFromCard(id) {
-            document.getElementById('start-routine-select').value = id;
+            const select = document.getElementById('start-routine-select');
+            if (select) select.value = id;
             startWorkoutSession();
             switchTab('workout');
         }
 
-        // Заполнение списка упражнений в форме ввода (безопасное)
-        async function loadExercisesInSelect() {
-            const select = document.getElementById('exercise-select');
-            if (!select) return; // Предотвращаем ошибку, если элемент отсутствует в текущем DOM
-            const list = await db.exercises.toArray();
-            list.sort((a, b) => a.name.localeCompare(b.name));
-
-            select.innerHTML = list.map(item => `
-                <option value="${item.id}">${item.name}</option>
-            `).join('');
-        }
-
-        // СБОРКА И ЗАПУСК СЕССИИ ТРЕНИРОВКИ
         async function startWorkoutSession(isFree = false) {
-            const todayStr = new Date().toISOString().split('T')[0];
-
             if (isFree) {
                 const allEx = await db.exercises.toArray();
                 const ids = allEx.map(e => e.id);
@@ -739,7 +817,9 @@
                     exerciseIds: ids
                 };
             } else {
-                const routineId = parseInt(document.getElementById('start-routine-select').value);
+                const select = document.getElementById('start-routine-select');
+                if (!select) return;
+                const routineId = parseInt(select.value);
                 const routine = await db.programs.get(routineId);
                 if (!routine) {
                     showToast("Не удалось запустить программу", "error");
@@ -753,15 +833,11 @@
                 };
             }
 
-            // Запоминаем в кэш сессию
             localStorage.setItem('active_session_anatomyfit', JSON.stringify(activeSession));
-
-            // Перестраиваем UI
             buildActiveSessionUI();
             showToast(`Тренировка "${activeSession.name}" запущена!`, 'success');
         }
 
-        // Восстановление сессии при перезапуске
         function restoreSessionFromStorage() {
             const cached = localStorage.getItem('active_session_anatomyfit');
             if (cached) {
@@ -770,44 +846,48 @@
             }
         }
 
-        // Строит интерфейс запущенной тренировки
         async function buildActiveSessionUI() {
+            const idle = document.getElementById('workout-idle-state');
+            const active = document.getElementById('workout-active-state');
+            const indicator = document.getElementById('active-session-indicator');
+
             if (!activeSession) {
-                document.getElementById('workout-idle-state').classList.remove('hidden');
-                document.getElementById('workout-active-state').classList.add('hidden');
-                document.getElementById('active-session-indicator').classList.add('hidden');
+                if (idle) idle.classList.remove('hidden');
+                if (active) active.classList.add('hidden');
+                if (indicator) indicator.classList.add('hidden');
                 return;
             }
 
-            document.getElementById('workout-idle-state').classList.add('hidden');
-            document.getElementById('workout-active-state').classList.remove('hidden');
-            document.getElementById('active-session-indicator').classList.remove('hidden');
+            if (idle) idle.classList.add('hidden');
+            if (active) active.classList.remove('hidden');
+            if (indicator) indicator.classList.remove('hidden');
 
-            document.getElementById('active-program-title').innerText = activeSession.name;
+            const title = document.getElementById('active-program-title');
+            if (title) title.innerText = activeSession.name;
 
-            // Заполняем быстрые кнопки выбора упражнений в сессии
             const exercises = await db.exercises.toArray();
             const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
 
             const fastButtonsContainer = document.getElementById('active-session-exercises-list');
-            
-            // Фильтруем те, которые входят в сессию
             const sessionExercises = activeSession.exerciseIds.map(id => exerciseMap[id]).filter(Boolean);
 
-            fastButtonsContainer.innerHTML = sessionExercises.map(ex => `
-                <button onclick="selectActiveExercise(${ex.id})" class="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-xs rounded-xl border border-zinc-800 text-zinc-300 hover:text-brand transition flex items-center gap-1 font-medium">
-                    <i data-lucide="dumbbell" class="w-3 h-3 text-zinc-500"></i> ${ex.name}
-                </button>
-            `).join('');
+            if (fastButtonsContainer) {
+                fastButtonsContainer.innerHTML = sessionExercises.map(ex => `
+                    <button onclick="selectActiveExercise(${ex.id})" class="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-xs rounded-xl border border-zinc-800 text-zinc-300 hover:text-brand transition flex items-center gap-1 font-medium">
+                        <i data-lucide="dumbbell" class="w-3 h-3 text-zinc-500"></i> ${ex.name}
+                    </button>
+                `).join('');
+            }
 
-            // Заполняем выпадающий список активной формы
             const select = document.getElementById('active-exercise-select');
-            select.innerHTML = sessionExercises.map(ex => `
-                <option value="${ex.id}">${ex.name}</option>
-            `).join('');
+            if (select) {
+                select.innerHTML = sessionExercises.map(ex => `
+                    <option value="${ex.id}">${ex.name}</option>
+                `).join('');
 
-            if (sessionExercises.length > 0) {
-                select.value = sessionExercises[0].id;
+                if (sessionExercises.length > 0) {
+                    select.value = sessionExercises[0].id;
+                }
             }
 
             onActiveExerciseChange();
@@ -815,9 +895,9 @@
             lucide.createIcons();
         }
 
-        // Смена выбранного упражнения в активной форме
         async function onActiveExerciseChange() {
             const select = document.getElementById('active-exercise-select');
+            if (!select) return;
             const exId = parseInt(select.value);
             if (isNaN(exId)) return;
 
@@ -825,31 +905,27 @@
             const ex = exercises.find(e => e.id === exId);
             if (!ex) return;
 
-            document.getElementById('current-workout-exercise-group').innerText = MUSCLE_NAMES[ex.primaryMuscle];
+            const label = document.getElementById('current-workout-exercise-group');
+            if (label) label.innerText = MUSCLE_NAMES[ex.primaryMuscle];
 
-            // Рассчитываем и выводим СОВЕТНИКА ПРОГРЕССИИ
             await updateProgressionAdvice(exId);
         }
 
-        // Умная функция анализа прогрессии на основе формулы Эпли и объема
         async function updateProgressionAdvice(exerciseId) {
             const adviceText = document.getElementById('progression-advice-text');
             const prevBestText = document.getElementById('advisor-prev-best');
+            if (!adviceText || !prevBestText) return;
 
-            // Получаем все логи для этого упражнения
             const allLogs = await db.workoutLogs.where('exerciseId').equals(exerciseId).toArray();
             
             if (allLogs.length === 0) {
                 prevBestText.innerText = "Первый раз";
                 adviceText.innerHTML = `🌟 <strong>Первое знакомство!</strong> Это упражнение выполняется впервые. 
-                <br>Подберите вес для ориентировочной работы в диапазоне <strong>8–12 чистых повторений</strong> с запасом в 1–2 раза (RIR).`;
+                <br>Подберите вес для ориентировочной работы в диапазоне <strong>8–12 чистых повторений</strong> с запасом в 1–2 повторения (RIR).`;
                 return;
             }
 
-            // Группируем логи по датам, чтобы найти последнюю тренировочную сессию
             const dates = [...new Set(allLogs.map(l => l.date))].sort();
-            
-            // Если тренировались только сегодня, показываем её. Иначе - крайнюю прошлую дату
             const todayStr = new Date().toISOString().split('T')[0];
             let lastTrainingDate = dates[dates.length - 1];
             if (lastTrainingDate === todayStr && dates.length > 1) {
@@ -858,12 +934,10 @@
 
             const lastSessionLogs = allLogs.filter(l => l.date === lastTrainingDate);
 
-            // Находим лучший подход (по максимальному одноповторному максимуму 1RM Эпли)
             let bestSet = null;
             let max1RM = 0;
 
             lastSessionLogs.forEach(set => {
-                // Formula: 1RM = w * (1 + r/30)
                 const oneRM = set.weight * (1 + set.reps / 30);
                 if (oneRM > max1RM) {
                     max1RM = oneRM;
@@ -876,22 +950,19 @@
                 return;
             }
 
-            // Форматируем дату для вывода
             const dateObj = new Date(lastTrainingDate);
             const formattedDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 
-            prevBestText.innerText = `Last: ${formattedDate}`;
+            prevBestText.innerText = `Было: ${formattedDate}`;
 
-            // Рассчитываем план прогрессии
             const lastW = bestSet.weight;
             const lastR = bestSet.reps;
-            
-            const nextWeight = lastW + 2.5; 
+            const nextWeight = lastW > 0 ? lastW + 2.5 : 2.5; 
             const targetRepsMin = Math.max(5, lastR - 2);
             const targetRepsMax = lastR;
 
             adviceText.innerHTML = `
-                В прошлый раз (${formattedDate}) вы сделали: <strong class="text-zinc-100">${lastW} кг × ${lastR} раз</strong> 
+                Прошлый лучший подход (${formattedDate}): <strong class="text-zinc-100">${lastW} кг × ${lastR} раз</strong> 
                 (Расчетный 1RM: <span class="text-brand font-mono">${Math.round(max1RM)} кг</span>).
                 <div class="mt-2 text-[11px] border-t border-zinc-900 pt-1.5 space-y-1">
                     <div class="text-emerald-400 font-semibold">Варианты прогрессии на сегодня:</div>
@@ -901,25 +972,31 @@
                     </div>
                     <div class="flex items-center gap-1.5">
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-500/50"></span>
-                        <span><strong>Объем (Репсы):</strong> Попробуйте те же <strong class="text-zinc-100">${lastW} кг</strong>, но сделайте <strong class="text-zinc-100">${lastR + 1} раз</strong>.</span>
+                        <span><strong>Объем (Повторения):</strong> Попробуйте те же <strong class="text-zinc-100">${lastW} кг</strong>, но сделайте на <strong class="text-zinc-100">${lastR + 1} раз</strong>.</span>
                     </div>
                 </div>
             `;
         }
 
-        // Кнопка быстрого переключения упражнения на форме записи
         function selectActiveExercise(id) {
-            document.getElementById('active-exercise-select').value = id;
-            onActiveExerciseChange();
+            const select = document.getElementById('active-exercise-select');
+            if (select) {
+                select.value = id;
+                onActiveExerciseChange();
+            }
         }
 
-        // Записать подход во время тренировки
         async function saveActiveSet() {
-            const exerciseId = parseInt(document.getElementById('active-exercise-select').value);
-            const weight = parseFloat(document.getElementById('input-weight').value);
-            const reps = parseInt(document.getElementById('input-reps').value);
+            const select = document.getElementById('active-exercise-select');
+            if (!select) return;
+            const exerciseId = parseInt(select.value);
+            const weightInput = document.getElementById('input-weight');
+            const repsInput = document.getElementById('input-reps');
 
-            if (isNaN(weight) || weight < 0 || isNaN(reps) || reps <= 0) {
+            const weight = weightInput ? parseFloat(weightInput.value) : 0;
+            const reps = repsInput ? parseInt(repsInput.value) : 0;
+
+            if (isNaN(weight) || isNaN(reps) || reps <= 0) {
                 showToast("Заполните вес и повторения корректно", "error");
                 return;
             }
@@ -939,7 +1016,6 @@
             await updateProgressionAdvice(exerciseId);
         }
 
-        // Завершение тренировочной сессии
         async function finishWorkoutSession() {
             const conf = await showConfirm("Завершить текущую тренировку и сохранить всю историю?");
             if (!conf) return;
@@ -951,9 +1027,9 @@
             switchTab('stats');
         }
 
-        // Заполнение списка упражнений в форме ввода
         async function loadExercisesInSelect() {
-            const select = document.getElementById('exercise-select');
+            const select = document.getElementById('active-exercise-select');
+            if (!select) return;
             const list = await db.exercises.toArray();
             list.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -962,10 +1038,9 @@
             `).join('');
         }
 
-        // Создание своего упражнения
         async function createCustomExercise() {
             const nameInput = document.getElementById('custom-exercise-name');
-            const name = nameInput.value.trim();
+            const name = nameInput ? nameInput.value.trim() : '';
 
             const primaryMuscle = document.getElementById('custom-primary').value;
             const secondaryMuscle = document.getElementById('custom-secondary').value;
@@ -994,18 +1069,18 @@
                 isCustom: 1
             });
 
-            nameInput.value = '';
+            if (nameInput) nameInput.value = '';
             showToast('Анатомическое упражнение создано!', 'success');
             await loadExercisesInSelect();
             await loadAllExercisesList();
             await loadRoutinesInSelectors();
         }
 
-        // Вывод сегодняшней тренировки
         async function loadTodayLogs() {
             const container = document.getElementById('today-logs-container');
-            const todayStr = new Date().toISOString().split('T')[0];
+            if (!container) return;
 
+            const todayStr = new Date().toISOString().split('T')[0];
             const logs = await db.workoutLogs.where('date').equals(todayStr).toArray();
             const exercises = await db.exercises.toArray();
             const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
@@ -1019,14 +1094,14 @@
                 return;
             }
 
-            logs.reverse(); // Новые вверху
+            logs.reverse();
 
             container.innerHTML = logs.map(log => {
                 const ex = exerciseMap[log.exerciseId] || { name: 'Удаленное упражнение', primaryMuscle: 'chest' };
                 const vol = log.weight * log.reps;
                 
-                let details = `Цель: ${MUSCLE_NAMES[ex.primaryMuscle]}`;
-                if (ex.secondaryMuscle) details += ` | + ${MUSCLE_NAMES[ex.secondaryMuscle]}`;
+                let details = `Цель: ${MUSCLE_NAMES[ex.primaryMuscle] || ex.primaryMuscle}`;
+                if (ex.secondaryMuscle) details += ` | + ${MUSCLE_NAMES[ex.secondaryMuscle] || ex.secondaryMuscle}`;
 
                 return `
                     <div class="bg-brand-card p-3 rounded-xl border border-zinc-800 flex items-center justify-between">
@@ -1052,7 +1127,6 @@
             lucide.createIcons();
         }
 
-        // Удаление подхода
         async function deleteLog(id) {
             const confirm = await showConfirm("Удалить выбранный подход?");
             if (!confirm) return;
@@ -1062,26 +1136,26 @@
             await loadTodayLogs();
             await updateStatistics();
             
-            // Обновляем советник на форме
             const select = document.getElementById('active-exercise-select');
             if (select && select.value) {
                 updateProgressionAdvice(parseInt(select.value));
             }
         }
 
-        // Библиотека упражнений
         async function loadAllExercisesList() {
             const container = document.getElementById('exercise-list-container');
+            if (!container) return;
+
             const list = await db.exercises.toArray();
             list.sort((a, b) => a.name.localeCompare(b.name));
 
             container.innerHTML = list.map(item => {
-                let synergyInfo = `Основная: ${MUSCLE_NAMES[item.primaryMuscle]}`;
+                let synergyInfo = `Основная: ${MUSCLE_NAMES[item.primaryMuscle] || item.primaryMuscle}`;
                 if (item.secondaryMuscle) {
-                    synergyInfo += ` | Вторичная: ${MUSCLE_NAMES[item.secondaryMuscle]} (${item.secondaryCoeff})`;
+                    synergyInfo += ` | Вторичная: ${MUSCLE_NAMES[item.secondaryMuscle] || item.secondaryMuscle} (${item.secondaryCoeff})`;
                 }
                 if (item.tertiaryMuscle) {
-                    synergyInfo += ` | Стабилизатор: ${MUSCLE_NAMES[item.tertiaryMuscle]} (${item.tertiaryCoeff})`;
+                    synergyInfo += ` | Стабилизатор: ${MUSCLE_NAMES[item.tertiaryMuscle] || item.tertiaryMuscle} (${item.tertiaryCoeff})`;
                 }
 
                 return `
@@ -1104,7 +1178,6 @@
             lucide.createIcons();
         }
 
-        // Удаление упражнения
         async function deleteCustomExercise(id) {
             const confirm = await showConfirm("Вы действительно хотите удалить это упражнение из библиотеки?");
             if (!confirm) return;
@@ -1116,52 +1189,110 @@
             await loadRoutinesInSelectors();
         }
 
-        // Обновление всей аналитики
+        // Обновление всей аналитики с переходом на скользящее окно 7 дней
         async function updateStatistics() {
             const logs = await db.workoutLogs.toArray();
             const exercises = await db.exercises.toArray();
             const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
 
-            // Карточки
-            document.getElementById('total-sets-count').innerText = logs.length;
+            const weeks = getRollingPeriods(); // ПОЛУЧАЕМ СКОЛЬЗЯЩИЕ ОКНА (Последние 7 и Предыдущие 7 дней)
 
-            const oneWeekAgo = new Date();
-            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-            const oneWeekAgoStr = oneWeekAgo.toISOString().split('T')[0];
+            // Фильтруем логи по скользящим периодам
+            const currentWeekLogs = logs.filter(l => l.date >= weeks.currentStart && l.date <= weeks.currentEnd);
+            const prevWeekLogs = logs.filter(l => l.date >= weeks.prevStart && l.date <= weeks.prevEnd);
 
-            const weeklyLogs = logs.filter(l => l.date >= oneWeekAgoStr);
-            const weeklyVolumeSum = weeklyLogs.reduce((sum, log) => sum + (log.weight * log.reps), 0);
-            document.getElementById('weekly-tonnage').innerText = `${weeklyVolumeSum} кг`;
+            // Карточки верха статистики в зависимости от режима
+            const cardLeftTitle = document.getElementById('stats-card-left-title');
+            const cardLeftVal = document.getElementById('stats-card-left-val');
+            const cardRightTitle = document.getElementById('stats-card-right-title');
+            const cardRightVal = document.getElementById('stats-card-right-val');
 
-            // Расчет по 15 группам мышц
-            const muscleLoads = {};
-            for (const key of Object.keys(MUSCLE_NAMES)) {
-                muscleLoads[key] = 0;
+            const chartTitle = document.getElementById('stats-chart-title');
+            const chartDesc = document.getElementById('stats-chart-desc');
+            const historyTitle = document.getElementById('history-chart-title');
+            const historyDesc = document.getElementById('history-chart-desc');
+
+            if (statsMode === 'sets') {
+                if (cardLeftTitle) cardLeftTitle.innerText = `Последние 7 дней (${weeks.currentRange})`;
+                if (cardLeftVal) cardLeftVal.innerText = `${currentWeekLogs.length} сетов`;
+                if (cardRightTitle) cardRightTitle.innerText = `Предыдущие 7 дней (${weeks.prevRange})`;
+                if (cardRightVal) cardRightVal.innerText = `${prevWeekLogs.length} сетов`;
+
+                if (chartTitle) chartTitle.innerText = "Баланс рабочих подходов (за 7 дней)";
+                if (chartDesc) chartDesc.innerText = "Объем за последние 7 дней с учетом синергистов по сравнению с твоей недельной нормой.";
+                if (historyTitle) historyTitle.innerText = "Подходы по дням";
+                if (historyDesc) historyDesc.innerText = "Количество завершенных сетов за последние 7 дней";
+            } else {
+                const currentWeekVolume = currentWeekLogs.reduce((sum, log) => sum + (log.weight * log.reps), 0);
+                if (cardLeftTitle) cardLeftTitle.innerText = "Тоннаж за последние 7 дней";
+                if (cardLeftVal) cardLeftVal.innerText = `${currentWeekVolume} кг`;
+                if (cardRightTitle) cardRightTitle.innerText = "Общий тоннаж за всё время";
+                const totalTonnage = logs.reduce((sum, log) => sum + (log.weight * log.reps), 0);
+                if (cardRightVal) cardRightVal.innerText = `${totalTonnage} кг`;
+
+                if (chartTitle) chartTitle.innerText = "Накопленный силовой тоннаж";
+                if (chartDesc) chartDesc.innerText = "Суммарный поднятый вес в килограммах по мышечным группам за все время.";
+                if (historyTitle) historyTitle.innerText = "Тоннаж по дням";
+                if (historyDesc) historyDesc.innerText = "Общий поднятый вес в кг за последние 7 дней";
             }
 
-            logs.forEach(log => {
-                const ex = exerciseMap[log.exerciseId];
-                if (!ex) return;
+            // РАСЧЕТ ДАННЫХ ДЛЯ ОБЕИХ МЕТРИК
+            const currentData = {};
+            const prevData = {};
 
-                const baseVolume = log.weight * log.reps;
+            for (const key of Object.keys(MUSCLE_NAMES)) {
+                currentData[key] = 0;
+                prevData[key] = 0;
+            }
 
-                if (muscleLoads[ex.primaryMuscle] !== undefined) {
-                    muscleLoads[ex.primaryMuscle] += baseVolume;
-                }
-                if (ex.secondaryMuscle && muscleLoads[ex.secondaryMuscle] !== undefined) {
-                    muscleLoads[ex.secondaryMuscle] += baseVolume * ex.secondaryCoeff;
-                }
-                if (ex.tertiaryMuscle && muscleLoads[ex.tertiaryMuscle] !== undefined) {
-                    muscleLoads[ex.tertiaryMuscle] += baseVolume * ex.tertiaryCoeff;
-                }
-            });
+            if (statsMode === 'sets') {
+                // Подходы рассчитываем по формуле: 1.0 за цель, коэф за синергисты
+                const calculateSetsVolume = (periodLogs, targetObj) => {
+                    periodLogs.forEach(log => {
+                        const ex = exerciseMap[log.exerciseId];
+                        if (!ex) return;
 
-            renderMuscleProgressBars(muscleLoads);
-            renderRadarMuscleChart(muscleLoads);
+                        if (targetObj[ex.primaryMuscle] !== undefined) {
+                            targetObj[ex.primaryMuscle] += 1;
+                        }
+                        if (ex.secondaryMuscle && targetObj[ex.secondaryMuscle] !== undefined) {
+                            targetObj[ex.secondaryMuscle] += ex.secondaryCoeff;
+                        }
+                        if (ex.tertiaryMuscle && targetObj[ex.tertiaryMuscle] !== undefined) {
+                            targetObj[ex.tertiaryMuscle] += ex.tertiaryCoeff;
+                        }
+                    });
+                };
 
-            // Динамика по дням за последние 7 дней
+                calculateSetsVolume(currentWeekLogs, currentData);
+                calculateSetsVolume(prevWeekLogs, prevData);
+            } else {
+                // Для тоннажа рассчитываем по коэффициентам поднятого веса за все время
+                logs.forEach(log => {
+                    const ex = exerciseMap[log.exerciseId];
+                    if (!ex) return;
+
+                    const baseVolume = log.weight * log.reps;
+
+                    if (currentData[ex.primaryMuscle] !== undefined) {
+                        currentData[ex.primaryMuscle] += baseVolume;
+                    }
+                    if (ex.secondaryMuscle && currentData[ex.secondaryMuscle] !== undefined) {
+                        currentData[ex.secondaryMuscle] += baseVolume * ex.secondaryCoeff;
+                    }
+                    if (ex.tertiaryMuscle && currentData[ex.tertiaryMuscle] !== undefined) {
+                        currentData[ex.tertiaryMuscle] += baseVolume * ex.tertiaryCoeff;
+                    }
+                });
+            }
+
+            // Рендер баров и радарного графика
+            renderMuscleProgressBars(currentData, prevData);
+            renderRadarMuscleChart(currentData);
+
+            // РАСЧЕТ ИСТОРИИ ПО ДНЯМ (последние 7 дней)
             const dayLabels = [];
-            const dayVolumes = [];
+            const dayValues = [];
             for (let i = 6; i >= 0; i--) {
                 const d = new Date();
                 d.setDate(d.getDate() - i);
@@ -1171,64 +1302,122 @@
                 dayLabels.push(label);
 
                 const daysLogs = logs.filter(l => l.date === dStr);
-                const volumeSum = daysLogs.reduce((sum, l) => sum + (l.weight * l.reps), 0);
-                dayVolumes.push(volumeSum);
+                
+                if (statsMode === 'sets') {
+                    dayValues.push(daysLogs.length);
+                } else {
+                    const volumeSum = daysLogs.reduce((sum, l) => sum + (l.weight * l.reps), 0);
+                    dayValues.push(volumeSum);
+                }
             }
 
-            renderHistoryChart(dayLabels, dayVolumes);
+            renderHistoryChart(dayLabels, dayValues);
         }
 
         // Рендер баров на вкладке Анатомии
-        function renderMuscleProgressBars(muscleLoads) {
+        function renderMuscleProgressBars(currentData, prevData) {
             const container = document.getElementById('muscle-progress-bars');
+            if (!container) return;
             
-            const sortedMuscles = Object.entries(muscleLoads)
-                .map(([key, value]) => ({ key, name: MUSCLE_NAMES[key], value: Math.round(value) }))
+            // Превращаем в массив и сортируем от более нагруженных к менее
+            const sortedMuscles = Object.entries(currentData)
+                .map(([key, value]) => ({ key, name: MUSCLE_NAMES[key] || key, value: value }))
                 .sort((a, b) => b.value - a.value);
 
-            const maxLoad = Math.max(...sortedMuscles.map(m => m.value)) || 1;
+            const maxValue = Math.max(...sortedMuscles.map(m => m.value)) || 1;
 
-            if (maxLoad === 1) {
+            if (maxValue === 1 && sortedMuscles.every(m => m.value === 0)) {
                 container.innerHTML = `
-                    <div class="text-center py-4 text-xs text-zinc-500">
-                        Данные появятся после добавления первой тренировки.
+                    <div class="text-center py-8 text-xs text-zinc-500">
+                        Данные отсутствуют. Начните тренировку, чтобы наполнить аналитику.
                     </div>
                 `;
                 return;
             }
 
             container.innerHTML = sortedMuscles.map(muscle => {
-                const percent = Math.min(100, Math.round((muscle.value / maxLoad) * 100));
+                const currentVal = muscle.value;
+                const prevVal = prevData[muscle.key] || 0;
                 
+                let percent = 0;
                 let barColor = 'bg-zinc-700';
-                if (percent > 80) barColor = 'bg-emerald-500';
-                else if (percent > 45) barColor = 'bg-teal-500';
-                else if (percent > 15) barColor = 'bg-zinc-600';
+                let badgeHtml = '';
+                let targetInfo = '';
+                let diffHtml = '';
+
+                // Отрисовка подходов с лимитами
+                if (statsMode === 'sets') {
+                    const target = MUSCLE_WEEKLY_TARGETS[muscle.key];
+                    percent = Math.min(100, Math.round((currentVal / target.max) * 100));
+                    targetInfo = `${Number(currentVal.toFixed(1))} / ${target.min}-${target.max} сетов`;
+
+                    if (currentVal === 0) {
+                        badgeHtml = `<span class="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 text-zinc-500 text-[8px] font-bold rounded uppercase">0 подх.</span>`;
+                    } else if (currentVal < target.min) {
+                        badgeHtml = `<span class="px-1.5 py-0.5 bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 text-[8px] font-bold rounded uppercase">Мало</span>`;
+                        barColor = 'bg-yellow-500';
+                    } else if (currentVal <= target.max) {
+                        badgeHtml = `<span class="px-1.5 py-0.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[8px] font-bold rounded uppercase">Норма</span>`;
+                        barColor = 'bg-emerald-500';
+                    } else {
+                        badgeHtml = `<span class="px-1.5 py-0.5 bg-red-500/15 border border-red-500/30 text-red-400 text-[8px] font-bold rounded uppercase">Перебор</span>`;
+                        barColor = 'bg-red-500 animate-pulse';
+                    }
+
+                    // Сравнение с предыдущей неделей (Rolling 7-day window)
+                    const diff = currentVal - prevVal;
+                    if (diff > 0.1) {
+                        diffHtml = `<span class="text-[9px] font-bold text-emerald-400 font-mono">+${diff.toFixed(1)}</span>`;
+                    } else if (diff < -0.1) {
+                        diffHtml = `<span class="text-[9px] font-bold text-zinc-500 font-mono">${diff.toFixed(1)}</span>`;
+                    } else {
+                        diffHtml = `<span class="text-[9px] font-medium text-zinc-600 font-mono">0</span>`;
+                    }
+                } else {
+                    // Обычная логика тоннажа
+                    percent = Math.min(100, Math.round((currentVal / maxValue) * 100));
+                    targetInfo = `${Math.round(currentVal)} кг`;
+                    barColor = 'bg-teal-500';
+                }
 
                 return `
                     <div class="space-y-1">
                         <div class="flex justify-between items-center text-xs">
-                            <span class="font-medium text-zinc-300 text-[11px]">${muscle.name}</span>
-                            <span class="font-mono text-zinc-400 text-[10px]">${muscle.value} кг</span>
+                            <div class="flex items-center gap-1.5">
+                                <span class="font-medium text-zinc-300 text-[11px]">${muscle.name}</span>
+                                <span class="text-[10px] text-zinc-500 font-mono">${targetInfo}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                ${badgeHtml}
+                                ${diffHtml}
+                            </div>
                         </div>
-                        <div class="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-950">
+                        <div class="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-950 relative">
                             <div class="h-full ${barColor} rounded-full transition-all duration-500" style="width: ${percent}%"></div>
                         </div>
+                        ${statsMode === 'sets' ? `
+                            <div class="flex justify-between text-[9px] text-zinc-500 leading-none">
+                                <span>Прошлые 7 дней: ${prevVal.toFixed(1)} подх.</span>
+                                <span>Рекомендуемый лимит: ${MUSCLE_WEEKLY_TARGETS[muscle.key].min}-${MUSCLE_WEEKLY_TARGETS[muscle.key].max}</span>
+                            </div>
+                        ` : ''}
                     </div>
                 `;
             }).join('');
         }
 
         function renderRadarMuscleChart(muscleLoads) {
-            const ctx = document.getElementById('muscleChart').getContext('2d');
+            const canvas = document.getElementById('muscleChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
             
             if (muscleChart) {
                 muscleChart.destroy();
             }
 
             const sortedKeys = Object.keys(muscleLoads);
-            const labels = sortedKeys.map(k => MUSCLE_NAMES[k]);
-            const values = sortedKeys.map(k => Math.round(muscleLoads[k]));
+            const labels = sortedKeys.map(k => MUSCLE_NAMES[k] || k);
+            const values = sortedKeys.map(k => Number(muscleLoads[k].toFixed(1)));
             const hasData = values.some(v => v > 0);
 
             if (!hasData) {
@@ -1252,11 +1441,11 @@
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Тоннаж (кг)',
+                        label: statsMode === 'sets' ? 'Рабочие сеты (последние 7 дней)' : 'Силовой Тоннаж (кг)',
                         data: values,
-                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                        borderColor: '#10b981',
-                        pointBackgroundColor: '#10b981',
+                        backgroundColor: statsMode === 'sets' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(20, 184, 166, 0.15)',
+                        borderColor: statsMode === 'sets' ? '#10b981' : '#14b8a6',
+                        pointBackgroundColor: statsMode === 'sets' ? '#10b981' : '#14b8a6',
                         borderWidth: 2,
                     }]
                 },
@@ -1282,7 +1471,9 @@
         }
 
         function renderHistoryChart(labels, values) {
-            const ctx = document.getElementById('historyChart').getContext('2d');
+            const canvas = document.getElementById('historyChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
             
             if (historyChart) {
                 historyChart.destroy();
@@ -1293,13 +1484,13 @@
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Тоннаж за день',
+                        label: statsMode === 'sets' ? 'Подходов' : 'Тоннаж',
                         data: values,
-                        backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                        borderColor: '#10b981',
+                        backgroundColor: statsMode === 'sets' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(20, 184, 166, 0.2)',
+                        borderColor: statsMode === 'sets' ? '#10b981' : '#14b8a6',
                         borderWidth: 2,
                         borderRadius: 6,
-                        hoverBackgroundColor: '#10b981'
+                        hoverBackgroundColor: statsMode === 'sets' ? '#10b981' : '#14b8a6'
                     }]
                 },
                 options: {
@@ -1322,11 +1513,12 @@
             });
         }
 
-        // Всплывающие уведомления
         function showToast(message, type = 'info') {
             const toast = document.getElementById('toast');
             const toastMsg = document.getElementById('toast-message');
             const toastIcon = document.getElementById('toast-icon');
+
+            if (!toast || !toastMsg || !toastIcon) return;
 
             toastMsg.innerText = message;
             if (type === 'success') {
@@ -1350,29 +1542,31 @@
             }, 3000);
         }
 
-        // Показ модалки подтверждения
         function showConfirm(text) {
-            document.getElementById('confirm-text').innerText = text;
-            document.getElementById('confirm-modal').classList.remove('hidden');
+            const textEl = document.getElementById('confirm-text');
+            const modal = document.getElementById('confirm-modal');
+            if (textEl) textEl.innerText = text;
+            if (modal) modal.classList.remove('hidden');
             return new Promise((resolve) => {
                 pendingConfirmResolve = resolve;
             });
         }
 
         function closeConfirm(result) {
-            document.getElementById('confirm-modal').classList.add('hidden');
+            const modal = document.getElementById('confirm-modal');
+            if (modal) modal.classList.add('hidden');
             if (pendingConfirmResolve) {
                 pendingConfirmResolve(result);
                 pendingConfirmResolve = null;
             }
         }
 
-        // Переключение вкладок
         function switchTab(tabName) {
             const sections = ['workout', 'programs', 'stats', 'exercises', 'settings'];
             sections.forEach(sec => {
                 const el = document.getElementById(`tab-${sec}`);
                 const nav = document.getElementById(`nav-${sec}`);
+                if (!el || !nav) return;
                 if (sec === tabName) {
                     el.classList.remove('hidden');
                     nav.classList.add('text-brand');
@@ -1395,7 +1589,6 @@
             }
         }
 
-        // Экспорт в JSON
         async function exportData() {
             const exercises = await db.exercises.toArray();
             const logs = await db.workoutLogs.toArray();
@@ -1417,9 +1610,9 @@
             showToast('Резервная копия скачана!', 'success');
         }
 
-        // Импорт
         function importData(event) {
             const input = event.target;
+            if (!input.files || input.files.length === 0) return;
             const reader = new FileReader();
             
             reader.onload = async function() {
@@ -1448,7 +1641,8 @@
                         await db.programs.bulkAdd(DEFAULT_PROGRAMS);
                     }
 
-                    showToast('Резервная копия развернута успешно!', 'success');
+                    showToast('Данные успешно импортированы!', 'success');
+                    
                     await loadRoutinesInSelectors();
                     await loadExercisesInSelect();
                     await loadAllExercisesList();
@@ -1456,14 +1650,13 @@
                     buildActiveSessionUI();
                     
                 } catch (e) {
-                    showToast('Не удалось импортировать файл', 'error');
+                    showToast('Не удалось импортировать файл: ' + e.message, 'error');
                 }
             };
 
             reader.readAsText(input.files[0]);
         }
 
-        // Полный сброс
         async function confirmClearAll() {
             const confirm = await showConfirm("Вы уверены, что хотите стереть все данные? Все программы, упражнения и статистика тренировок будут возвращены к дефолтным значениям.");
             if (!confirm) return;
@@ -1486,7 +1679,6 @@
             buildActiveSessionUI();
         }
 
-        // Настройка PWA (Manifest & SW)
         function initPWA() {
             const manifest = {
                 "name": "AnatomyFit — Аналитика Прогрессии Нагрузок",
@@ -1511,11 +1703,14 @@
             };
 
             const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-            document.getElementById('pwa-manifest').setAttribute('href', URL.createObjectURL(manifestBlob));
+            const manifestLink = document.getElementById('pwa-manifest');
+            if (manifestLink) {
+                manifestLink.setAttribute('href', URL.createObjectURL(manifestBlob));
+            }
 
             if ('serviceWorker' in navigator) {
                 const swCode = `
-                    const CACHE_NAME = 'anatomyfit-v3';
+                    const CACHE_NAME = 'anatomyfit-v3-fixed';
                     const ASSETS = [
                         '${window.location.href}',
                         'https://cdn.tailwindcss.com',
