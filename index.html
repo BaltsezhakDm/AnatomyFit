@@ -1,0 +1,1554 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AnatomyFit — Прогрессия и Программы</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            DEFAULT: '#10b981', // Изумрудный акцент
+                            dark: '#059669',
+                            bg: '#09090b',
+                            card: '#18181b'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Подключаем библиотеки -->
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Настройка PWA -->
+    <link id="pwa-manifest" rel="manifest">
+    <meta name="theme-color" content="#09090b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%2310b981'><rect width='100' height='100' rx='20'/><path d='M30 40 h10 v20 h-10 z M60 40 h10 v20 h-10 z M40 45 h20 v10 h-20 z' fill='black'/></svg>">
+
+    <style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #09090b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #27272a;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="bg-brand-bg text-zinc-100 font-sans min-h-screen pb-28 antialiased">
+
+    <!-- ХЕДЕР -->
+    <header class="sticky top-0 z-50 bg-brand-bg/80 backdrop-blur-md border-b border-zinc-800 px-4 py-3">
+        <div class="max-w-md mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <div class="p-1.5 bg-emerald-500/10 rounded-lg text-brand">
+                    <i data-lucide="sparkles" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight">AnatomyFit Pro</h1>
+                    <p class="text-[10px] text-emerald-400 font-medium">Контроль прогрессии нагрузки</p>
+                </div>
+            </div>
+            <!-- Индикатор сессии -->
+            <div id="active-session-indicator" class="hidden px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[10px] font-bold border border-amber-500/20 animate-pulse">
+                Тренировка идет
+            </div>
+        </div>
+    </header>
+
+    <!-- ОСНОВНОЙ КОНТЕНТ -->
+    <main class="max-w-md mx-auto px-4 py-4">
+        
+        <!-- ВКЛАДКА 1: АКТИВНАЯ ТРЕНИРОВКА -->
+        <section id="tab-workout" class="space-y-6">
+            
+            <!-- Состояние: Тренировка не запущена -->
+            <div id="workout-idle-state" class="bg-brand-card rounded-2xl p-6 border border-zinc-800 text-center space-y-4">
+                <div class="mx-auto w-12 h-12 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
+                    <i data-lucide="play" class="w-6 h-6 text-brand"></i>
+                </div>
+                <div class="space-y-1">
+                    <h3 class="font-bold text-zinc-200 text-base">Готовы к тренировке?</h3>
+                    <p class="text-xs text-zinc-400">Выберите программу или начните свободную тренировку, чтобы отслеживать прогрессию.</p>
+                </div>
+                
+                <div class="space-y-2 pt-2">
+                    <div>
+                        <label class="block text-left text-[10px] text-zinc-500 mb-1 uppercase font-bold tracking-wider">Выбрать программу:</label>
+                        <select id="start-routine-select" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand">
+                            <!-- Заполняется динамически -->
+                        </select>
+                    </div>
+                    <button onclick="startWorkoutSession()" class="w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-200 flex items-center justify-center gap-2">
+                        <i data-lucide="zap" class="w-4 h-4"></i>
+                        Начать тренировку по программе
+                    </button>
+                    <button onclick="startWorkoutSession(true)" class="w-full bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-semibold py-2.5 rounded-xl border border-zinc-800 transition text-xs">
+                        Свободная тренировка (без программы)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Состояние: Тренировка запущена -->
+            <div id="workout-active-state" class="space-y-4 hidden">
+                <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex justify-between items-center">
+                    <div>
+                        <span class="text-[9px] text-amber-400 uppercase font-extrabold tracking-widest block">Текущая сессия</span>
+                        <h3 class="font-bold text-sm text-zinc-100" id="active-program-title">Свободная тренировка</h3>
+                    </div>
+                    <button onclick="finishWorkoutSession()" class="bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1">
+                        <i data-lucide="square" class="w-3.5 h-3.5"></i>
+                        Завершить
+                    </button>
+                </div>
+
+                <!-- Быстрый выбор упражнения из запущенной программы -->
+                <div class="bg-brand-card rounded-2xl p-4 border border-zinc-800 space-y-3">
+                    <label class="block text-xs font-semibold text-zinc-400">Выберите упражнение для выполнения:</label>
+                    <div id="active-session-exercises-list" class="flex flex-wrap gap-2">
+                        <!-- Заполняется кнопками упражнений текущей программы -->
+                    </div>
+                </div>
+
+                <!-- Форма записи подхода с СОВЕТНИКОМ ПРОГРЕССИИ -->
+                <div class="bg-brand-card rounded-2xl p-5 border border-zinc-800 shadow-xl space-y-4">
+                    <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
+                        <h2 class="font-bold flex items-center gap-2 text-zinc-200 text-sm">
+                            <i data-lucide="plus-circle" class="w-5 h-5 text-brand"></i>
+                            Записать подход
+                        </h2>
+                        <span class="text-xs font-mono text-zinc-400" id="current-workout-exercise-group">--</span>
+                    </div>
+
+                    <!-- Выбор активного упражнения -->
+                    <div>
+                        <select id="active-exercise-select" onchange="onActiveExerciseChange()" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-brand">
+                            <!-- Все упражнения для свободного выбора/смены -->
+                        </select>
+                    </div>
+
+                    <!-- УМНЫЙ СОВЕТНИК ПРОГРЕССИИ -->
+                    <div id="progression-advisor-card" class="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[9px] uppercase tracking-wider font-bold text-brand flex items-center gap-1">
+                                <i data-lucide="sparkles" class="w-3 h-3 text-brand"></i>
+                                Анализатор прогрессии AnatomyFit
+                            </span>
+                            <span id="advisor-prev-best" class="text-[10px] text-zinc-500 font-mono"></span>
+                        </div>
+                        <p id="progression-advice-text" class="text-xs text-zinc-300 leading-relaxed font-medium">
+                            Загрузка истории упражнения...
+                        </p>
+                    </div>
+
+                    <!-- Поля веса и повторений -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-zinc-400 mb-1">Вес (кг)</label>
+                            <div class="relative">
+                                <input type="number" id="input-weight" placeholder="0" step="0.5" min="0" 
+                                       class="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-10 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand font-mono">
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">кг</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-zinc-400 mb-1">Повторения</label>
+                            <div class="relative">
+                                <input type="number" id="input-reps" placeholder="0" min="0"
+                                       class="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-10 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand font-mono">
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">раз</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Помощники быстрой корректировки -->
+                    <div class="flex gap-2 justify-between py-1">
+                        <div class="flex gap-1.5">
+                            <button onclick="adjustValue('input-weight', -2.5)" class="px-2.5 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 font-mono">-2.5</button>
+                            <button onclick="adjustValue('input-weight', 2.5)" class="px-2.5 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 font-mono">+2.5</button>
+                        </div>
+                        <div class="flex gap-1.5">
+                            <button onclick="adjustValue('input-reps', -1)" class="px-2.5 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 font-mono">-1</button>
+                            <button onclick="adjustValue('input-reps', 1)" class="px-2.5 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 font-mono">+1</button>
+                        </div>
+                    </div>
+
+                    <button onclick="saveActiveSet()" class="w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-200 flex items-center justify-center gap-2 mt-2">
+                        <i data-lucide="check" class="w-5 h-5"></i>
+                        Записать подход
+                    </button>
+                </div>
+
+                <!-- Подходы за сегодня в этой тренировке -->
+                <div class="space-y-3">
+                    <h3 class="font-bold text-zinc-300 text-sm flex items-center gap-2">
+                        <i data-lucide="history" class="w-4 h-4 text-brand"></i>
+                        Подходы, выполненные за эту тренировку
+                    </h3>
+                    <div id="today-logs-container" class="space-y-2">
+                        <!-- Заполняется динамически -->
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- ВКЛАДКА 2: КОНСТРУКТОР ПРОГРАММ -->
+        <section id="tab-programs" class="space-y-6 hidden">
+            <!-- Создание программы -->
+            <div class="bg-brand-card rounded-2xl p-5 border border-zinc-800 space-y-4">
+                <h3 class="font-bold text-zinc-200 flex items-center gap-2">
+                    <i data-lucide="folder-plus" class="w-5 h-5 text-brand"></i>
+                    Новая программа тренировок
+                </h3>
+                
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1">Название программы</label>
+                        <input type="text" id="program-name-input" placeholder="Например: Сплит День А (Грудь/Спина)" 
+                               class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand">
+                    </div>
+
+                    <!-- Выбор упражнений для включения в программу -->
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-2 font-medium">Выберите упражнения (кликните, чтобы добавить):</label>
+                        <div id="program-exercise-selector-pool" class="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto p-2 bg-zinc-950 rounded-xl border border-zinc-900">
+                            <!-- Заполняется динамически -->
+                        </div>
+                    </div>
+
+                    <!-- Список выбранных упражнений -->
+                    <div class="space-y-1">
+                        <span class="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Выбранный состав программы:</span>
+                        <div id="selected-exercises-preview" class="text-xs text-zinc-400 italic bg-zinc-900/50 p-2.5 rounded-lg min-h-8">
+                            Упражнения не выбраны. Кликните по упражнениям выше.
+                        </div>
+                    </div>
+
+                    <button onclick="createNewProgram()" class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold py-2.5 rounded-xl transition text-sm">
+                        Сохранить программу
+                    </button>
+                </div>
+            </div>
+
+            <!-- Список текущих программ -->
+            <div class="space-y-3">
+                <h3 class="font-bold text-zinc-300 flex items-center gap-2">
+                    <i data-lucide="book-open" class="w-4 h-4 text-brand"></i>
+                    Твои программы тренировок
+                </h3>
+                <div id="programs-list-container" class="space-y-3">
+                    <!-- Заполняется динамически -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ВКЛАДКА 3: АНАТОМИЧЕСКАЯ АНАЛИТИКА -->
+        <section id="tab-stats" class="space-y-6 hidden">
+            <div class="grid grid-cols-2 gap-3">
+                <div class="bg-brand-card p-4 rounded-xl border border-zinc-800">
+                    <span class="text-xs text-zinc-400 block">Всего подходов</span>
+                    <span class="text-xl font-mono font-bold text-brand" id="total-sets-count">0</span>
+                </div>
+                <div class="bg-brand-card p-4 rounded-xl border border-zinc-800">
+                    <span class="text-xs text-zinc-400 block">Тоннаж (7 дней)</span>
+                    <span class="text-xl font-mono font-bold text-brand" id="weekly-tonnage">0 кг</span>
+                </div>
+            </div>
+
+            <!-- Распределение нагрузки по 15 группам мышц -->
+            <div class="bg-brand-card p-5 rounded-2xl border border-zinc-800 space-y-4">
+                <div>
+                    <h3 class="font-bold text-zinc-200">Микроанатомическая карта</h3>
+                    <p class="text-xs text-zinc-400 leading-relaxed">Распределение нагрузки по детальным группам мышц с учетом синергии и веса.</p>
+                </div>
+                
+                <div id="muscle-progress-bars" class="space-y-3 pt-2">
+                    <!-- Рендерится динамически -->
+                </div>
+
+                <div class="border-t border-zinc-800 pt-4">
+                    <h4 class="text-xs font-semibold text-zinc-400 mb-2">Общая диаграмма синергии</h4>
+                    <div class="relative w-full h-80 flex items-center justify-center">
+                        <canvas id="muscleChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Хронология тренировок -->
+            <div class="bg-brand-card p-5 rounded-2xl border border-zinc-800 space-y-4">
+                <div>
+                    <h3 class="font-bold text-zinc-200">История по дням</h3>
+                    <p class="text-xs text-zinc-400">Суммарный накопленный объем нагрузок</p>
+                </div>
+                <div class="relative w-full h-48 flex items-center justify-center">
+                    <canvas id="historyChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- ВКЛАДКА 4: БАЗА УПРАЖНЕНИЙ С СИНЕРГИЕЙ -->
+        <section id="tab-exercises" class="space-y-6 hidden">
+            <!-- Конструктор кастомного упражнения -->
+            <div class="bg-brand-card rounded-2xl p-5 border border-zinc-800 space-y-4">
+                <h3 class="font-bold text-zinc-200 flex items-center gap-2">
+                    <i data-lucide="fingerprint" class="w-5 h-5 text-brand"></i>
+                    Анатомический конструктор
+                </h3>
+                <p class="text-xs text-zinc-400 leading-relaxed">Создай упражнение и укажи, какие мышцы в нем участвуют в качестве вторичных стабилизаторов и синергистов.</p>
+                
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1">Название упражнения</label>
+                        <input type="text" id="custom-exercise-name" placeholder="Например: Отжимания на кольцах" 
+                               class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand">
+                    </div>
+
+                    <!-- Первичная группа -->
+                    <div>
+                        <label class="block text-xs text-amber-400 font-semibold mb-1">Целевая группа (Нагрузка 100%)</label>
+                        <select id="custom-primary" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-brand">
+                            <!-- Заполняется динамически -->
+                        </select>
+                    </div>
+
+                    <!-- Вторичная группа -->
+                    <div class="p-3 bg-zinc-900/60 rounded-xl border border-zinc-800 space-y-2">
+                        <label class="block text-xs text-teal-400 font-semibold mb-1">Синергист (Вторичная нагрузка)</label>
+                        <select id="custom-secondary" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-brand">
+                            <option value="">-- Нет синергиста --</option>
+                            <!-- Заполняется динамически -->
+                        </select>
+                        <div class="flex items-center justify-between gap-3 pt-1">
+                            <span class="text-[10px] text-zinc-400">Степень вовлечения:</span>
+                            <div class="flex items-center gap-2">
+                                <input type="range" id="custom-secondary-coeff" min="0.1" max="0.9" step="0.1" value="0.5" class="w-24 accent-brand">
+                                <span id="coeff-sec-label" class="text-xs font-mono text-zinc-300">50%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Вспомогательная группа -->
+                    <div class="p-3 bg-zinc-900/60 rounded-xl border border-zinc-800 space-y-2">
+                        <label class="block text-xs text-sky-400 font-semibold mb-1">Стабилизатор (Третичная нагрузка)</label>
+                        <select id="custom-tertiary" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-brand">
+                            <option value="">-- Нет стабилизатора --</option>
+                            <!-- Заполняется динамически -->
+                        </select>
+                        <div class="flex items-center justify-between gap-3 pt-1">
+                            <span class="text-[10px] text-zinc-400">Степень вовлечения:</span>
+                            <div class="flex items-center gap-2">
+                                <input type="range" id="custom-tertiary-coeff" min="0.1" max="0.9" step="0.1" value="0.3" class="w-24 accent-brand">
+                                <span id="coeff-tert-label" class="text-xs font-mono text-zinc-300">30%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button onclick="createCustomExercise()" class="w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-150 text-sm">
+                        Записать упражнение в базу
+                    </button>
+                </div>
+            </div>
+
+            <!-- Библиотека -->
+            <div class="space-y-3">
+                <h3 class="font-bold text-zinc-300 flex items-center gap-2">
+                    <i data-lucide="library" class="w-4 h-4 text-brand"></i>
+                    Твоя библиотека упражнений
+                </h3>
+                <div id="exercise-list-container" class="space-y-2 max-h-96 overflow-y-auto pr-1">
+                    <!-- Заполняется динамически -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ВКЛАДКА 5: НАСТРОЙКИ -->
+        <section id="tab-settings" class="space-y-6 hidden">
+            <div class="bg-brand-card rounded-2xl p-5 border border-zinc-800 space-y-4">
+                <h3 class="font-bold text-zinc-200">Локальная СУБД (Dexie)</h3>
+                <p class="text-xs text-zinc-400">Все расчеты нагрузок и шаблонов проходят локально на чипе вашего смартфона. Без отправки на внешние сервера.</p>
+                
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <button onclick="exportData()" class="flex flex-col items-center justify-center p-4 bg-zinc-900 border border-zinc-800 hover:border-brand/40 rounded-xl gap-2 text-zinc-300 transition duration-150">
+                        <i data-lucide="download" class="w-6 h-6 text-brand"></i>
+                        <span class="text-xs">Резервная копия</span>
+                    </button>
+                    <label class="flex flex-col items-center justify-center p-4 bg-zinc-900 border border-zinc-800 hover:border-brand/40 rounded-xl gap-2 text-zinc-300 cursor-pointer transition duration-150">
+                        <i data-lucide="upload" class="w-6 h-6 text-sky-400"></i>
+                        <span class="text-xs">Импортировать</span>
+                        <input type="file" id="import-file" class="hidden" onchange="importData(event)">
+                    </label>
+                </div>
+
+                <div class="border-t border-zinc-800 pt-4">
+                    <button onclick="confirmClearAll()" class="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-medium py-3 rounded-xl transition duration-150 text-sm flex items-center justify-center gap-2">
+                        <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                        Сбросить приложение
+                    </button>
+                </div>
+            </div>
+
+            <!-- Инструкция PWA -->
+            <div class="bg-zinc-900/50 p-5 rounded-2xl border border-zinc-800 text-center space-y-3">
+                <h4 class="text-sm font-bold text-zinc-300">Как установить на телефон?</h4>
+                <p class="text-xs text-zinc-400 leading-relaxed font-normal">
+                    Нажмите на значок <strong class="text-zinc-200">«Поделиться»</strong> в Safari (на iPhone) или <strong class="text-zinc-200">«Три точки»</strong> в Chrome (на Android) и выберите <strong class="text-zinc-200">«Добавить на экран "Домой"»</strong>. Дневник сможет запускаться автономно без интернета.
+                </p>
+                <div class="pt-2 text-[10px] text-zinc-500 font-mono">
+                    AnatomyFit Engine v3.0 (Progression Advisor)
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- НАВИГАЦИОННАЯ ПАНЕЛЬ СНИЗУ -->
+    <nav class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 border-t border-zinc-800 backdrop-blur-md py-2 px-4">
+        <div class="max-w-md mx-auto flex justify-between items-center">
+            
+            <button onclick="switchTab('workout')" id="nav-workout" class="flex flex-col items-center gap-1 flex-1 text-brand">
+                <i data-lucide="zap" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">Тренировка</span>
+            </button>
+
+            <button onclick="switchTab('programs')" id="nav-programs" class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
+                <i data-lucide="book-open" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">Программы</span>
+            </button>
+
+            <button onclick="switchTab('stats')" id="nav-stats" class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
+                <i data-lucide="radar" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">Анатомия</span>
+            </button>
+
+            <button onclick="switchTab('exercises')" id="nav-exercises" class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
+                <i data-lucide="fingerprint" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">База</span>
+            </button>
+
+            <button onclick="switchTab('settings')" id="nav-settings" class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
+                <i data-lucide="sliders" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">Опции</span>
+            </button>
+
+        </div>
+    </nav>
+
+    <!-- TOAST УВЕДОМЛЕНИЯ -->
+    <div id="toast" class="fixed bottom-24 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-700 text-zinc-100 text-xs px-4 py-3 rounded-xl shadow-2xl opacity-0 translate-y-2 pointer-events-none transition-all duration-300 z-50 flex items-center gap-2 max-w-[90%]">
+        <i data-lucide="info" class="w-4 h-4 text-brand" id="toast-icon"></i>
+        <span id="toast-message">Сообщение</span>
+    </div>
+
+    <!-- МОДАЛКА CONFIRM -->
+    <div id="confirm-modal" class="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-brand-card border border-zinc-800 p-6 rounded-2xl max-w-sm w-full space-y-4">
+            <h3 class="font-bold text-lg text-zinc-100">Вы уверены?</h3>
+            <p class="text-xs text-zinc-400" id="confirm-text">Это действие нельзя отменить.</p>
+            <div class="flex gap-3 pt-2">
+                <button onclick="closeConfirm(false)" class="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold rounded-xl text-sm transition">Отмена</button>
+                <button onclick="closeConfirm(true)" class="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-xl text-sm transition">Да, сделать</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Инициализация базы данных Dexie
+        const db = new Dexie('AnatomyFitDB_v3');
+        db.version(3).stores({
+            exercises: '++id, name, isCustom, primaryMuscle, secondaryMuscle, secondaryCoeff, tertiaryMuscle, tertiaryCoeff',
+            workoutLogs: '++id, date, exerciseId, weight, reps, sessionId',
+            programs: '++id, name, exerciseIds' // exerciseIds будет храниться массивом [id1, id2, ...]
+        });
+
+        // 15 Групп мышц
+        const MUSCLE_NAMES = {
+            chest: 'Грудь',
+            front_delts: 'Передние дельты',
+            side_delts: 'Средние дельты',
+            rear_delts: 'Задние дельты',
+            traps: 'Трапеции',
+            lats: 'Широчайшие',
+            erectors: 'Разгибатели спины',
+            abs: 'Пресс',
+            biceps: 'Бицепс',
+            triceps: 'Трицепс',
+            forearms: 'Предплечья',
+            quads: 'Квадрицепс',
+            hamstrings: 'Бицепс бедра',
+            calves: 'Икры',
+            glutes: 'Ягодицы'
+        };
+
+        const DEFAULT_EXERCISES = [
+            { name: 'Жим лежа на горизонтальной скамье', primaryMuscle: 'chest', secondaryMuscle: 'front_delts', secondaryCoeff: 0.6, tertiaryMuscle: 'triceps', tertiaryCoeff: 0.5, isCustom: 0 },
+            { name: 'Подтягивания широким хватом', primaryMuscle: 'lats', secondaryMuscle: 'biceps', secondaryCoeff: 0.6, tertiaryMuscle: 'rear_delts', tertiaryCoeff: 0.4, isCustom: 0 },
+            { name: 'Приседания со штангой', primaryMuscle: 'quads', secondaryMuscle: 'glutes', secondaryCoeff: 0.7, tertiaryMuscle: 'hamstrings', tertiaryCoeff: 0.4, isCustom: 0 },
+            { name: 'Армейский жим стоя', primaryMuscle: 'front_delts', secondaryMuscle: 'side_delts', secondaryCoeff: 0.6, tertiaryMuscle: 'triceps', tertiaryCoeff: 0.5, isCustom: 0 },
+            { name: 'Классическая становая тяга', primaryMuscle: 'erectors', secondaryMuscle: 'glutes', secondaryCoeff: 0.8, tertiaryMuscle: 'hamstrings', tertiaryCoeff: 0.8, isCustom: 0 },
+            { name: 'Тяга гантели к поясу в наклоне', primaryMuscle: 'lats', secondaryMuscle: 'rear_delts', secondaryCoeff: 0.5, tertiaryMuscle: 'biceps', tertiaryCoeff: 0.4, isCustom: 0 },
+            { name: 'Отжимания на брусьях (акцент трицепс)', primaryMuscle: 'triceps', secondaryMuscle: 'chest', secondaryCoeff: 0.6, tertiaryMuscle: 'front_delts', tertiaryCoeff: 0.4, isCustom: 0 },
+            { name: 'Махи гантелей в стороны стоя', primaryMuscle: 'side_delts', secondaryMuscle: 'front_delts', secondaryCoeff: 0.2, tertiaryMuscle: 'traps', tertiaryCoeff: 0.2, isCustom: 0 },
+            { name: 'Румынская тяга со штангой', primaryMuscle: 'hamstrings', secondaryMuscle: 'glutes', secondaryCoeff: 0.8, tertiaryMuscle: 'erectors', tertiaryCoeff: 0.5, isCustom: 0 },
+            { name: 'Подъем штанги на бицепс', primaryMuscle: 'biceps', secondaryMuscle: 'forearms', secondaryCoeff: 0.4, tertiaryMuscle: '', tertiaryCoeff: 0, isCustom: 0 },
+            { name: 'Подъем на икры стоя', primaryMuscle: 'calves', secondaryMuscle: '', secondaryCoeff: 0, tertiaryMuscle: '', tertiaryCoeff: 0, isCustom: 0 },
+            { name: 'Скручивания на римском стуле', primaryMuscle: 'abs', secondaryMuscle: '', secondaryCoeff: 0, tertiaryMuscle: '', tertiaryCoeff: 0, isCustom: 0 },
+            { name: 'Ягодичный мостик со штангой', primaryMuscle: 'glutes', secondaryMuscle: 'hamstrings', secondaryCoeff: 0.5, tertiaryMuscle: 'erectors', tertiaryCoeff: 0.3, isCustom: 0 }
+        ];
+
+        const DEFAULT_PROGRAMS = [
+            { name: 'Fullbody (Все тело)', exerciseIds: [1, 2, 3, 12] },
+            { name: 'Тяни-Толкай (День А - Толкай)', exerciseIds: [1, 4, 7, 8] },
+            { name: 'Тяни-Толкай (День Б - Тяни)', exerciseIds: [2, 5, 6, 10] }
+        ];
+
+        let activeSession = null; // Будет хранить { type: 'free'|'routine', id: programId|null, exerciseIds: [...] }
+        let selectedExercisesForCreation = []; // Временный массив для сборщика программы
+        let muscleChart = null;
+        let historyChart = null;
+        let pendingConfirmResolve = null;
+
+        // При загрузке страницы
+        window.addEventListener('DOMContentLoaded', async () => {
+            lucide.createIcons();
+            setupSliders();
+
+            // Дефолтное наполнение базы, если пуста
+            if (await db.exercises.count() === 0) {
+                await db.exercises.bulkAdd(DEFAULT_EXERCISES);
+            }
+            if (await db.programs.count() === 0) {
+                await db.programs.bulkAdd(DEFAULT_PROGRAMS);
+            }
+
+            populateMuscleSelectors();
+            await loadRoutinesInSelectors();
+            await loadExercisesInSelect();
+            await loadAllExercisesList();
+            await updateStatistics();
+
+            // Проверяем, была ли активная сессия в памяти
+            restoreSessionFromStorage();
+
+            // Динамический манифест PWA
+            initPWA();
+        });
+
+        // Помощник для быстрой корректировки числовых значений
+        function adjustValue(inputId, delta) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            let val = parseFloat(input.value) || 0;
+            val = Math.max(0, val + delta);
+            input.value = val;
+        }
+
+        // Настройка ползунков % в конструкторе
+        function setupSliders() {
+            const secSlider = document.getElementById('custom-secondary-coeff');
+            const secLabel = document.getElementById('coeff-sec-label');
+            secSlider.addEventListener('input', () => {
+                secLabel.innerText = Math.round(secSlider.value * 100) + '%';
+            });
+
+            const tertSlider = document.getElementById('custom-tertiary-coeff');
+            const tertLabel = document.getElementById('coeff-tert-label');
+            tertSlider.addEventListener('input', () => {
+                tertLabel.innerText = Math.round(tertSlider.value * 100) + '%';
+            });
+        }
+
+        function populateMuscleSelectors() {
+            const primarySelect = document.getElementById('custom-primary');
+            const secondarySelect = document.getElementById('custom-secondary');
+            const tertiarySelect = document.getElementById('custom-tertiary');
+
+            let optionsHtml = '';
+            for (const [key, value] of Object.entries(MUSCLE_NAMES)) {
+                optionsHtml += `<option value="${key}">${value}</option>`;
+            }
+
+            primarySelect.innerHTML = optionsHtml;
+            secondarySelect.innerHTML += optionsHtml;
+            tertiarySelect.innerHTML += optionsHtml;
+        }
+
+        // Заполнение селекторов программ на вкладе тренировки и конструктора
+        async function loadRoutinesInSelectors() {
+            const routines = await db.programs.toArray();
+            
+            // Выбор старта тренировки
+            const startSelect = document.getElementById('start-routine-select');
+            startSelect.innerHTML = routines.map(r => `
+                <option value="${r.id}">${r.name}</option>
+            `).join('');
+
+            // Отрисовка списка программ в вкладке Программы
+            const listContainer = document.getElementById('programs-list-container');
+            const exercises = await db.exercises.toArray();
+            const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+
+            listContainer.innerHTML = routines.map(r => {
+                const exNames = r.exerciseIds.map(id => exerciseMap[id]?.name || 'Удаленное упражнение').join(', ');
+                return `
+                    <div class="bg-brand-card p-4 rounded-xl border border-zinc-800 space-y-3">
+                        <div>
+                            <h4 class="font-bold text-zinc-100 text-sm">${r.name}</h4>
+                            <p class="text-[10px] text-zinc-400 leading-normal mt-1"><strong>Упражнения:</strong> ${exNames}</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="startRoutineFromCard(${r.id})" class="flex-1 bg-brand/10 hover:bg-brand/20 text-brand text-xs font-bold py-2 rounded-lg transition flex items-center justify-center gap-1.5">
+                                <i data-lucide="play" class="w-3.5 h-3.5"></i> Запустить
+                            </button>
+                            <button onclick="deleteRoutine(${r.id})" class="bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-red-400 px-3 rounded-lg transition">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Заполнение пула выбора для создания новой программы
+            const poolContainer = document.getElementById('program-exercise-selector-pool');
+            poolContainer.innerHTML = exercises.map(ex => `
+                <button onclick="toggleExerciseForProgram(${ex.id}, this)" class="px-2 py-1 bg-zinc-900 border border-zinc-800 hover:border-brand/40 text-[10px] rounded-lg text-zinc-300 transition-all">
+                    ${ex.name}
+                </button>
+            `).join('');
+
+            lucide.createIcons();
+        }
+
+        // Выбор упражнений в сборщик программы
+        async function toggleExerciseForProgram(id, el) {
+            const index = selectedExercisesForCreation.indexOf(id);
+            if (index === -1) {
+                selectedExercisesForCreation.push(id);
+                el.classList.add('border-brand', 'text-brand', 'bg-emerald-950/20');
+            } else {
+                selectedExercisesForCreation.splice(index, 1);
+                el.classList.remove('border-brand', 'text-brand', 'bg-emerald-950/20');
+            }
+
+            // Обновляем превью
+            const preview = document.getElementById('selected-exercises-preview');
+            if (selectedExercisesForCreation.length === 0) {
+                preview.innerHTML = "Упражнения не выбраны. Кликните по упражнениям выше.";
+                return;
+            }
+
+            const exercises = await db.exercises.toArray();
+            const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+            preview.innerHTML = selectedExercisesForCreation.map(exId => `
+                <span class="inline-block bg-zinc-800 px-2 py-1 rounded text-[10px] text-zinc-300 mr-1.5 mb-1.5">
+                    ${exerciseMap[exId]?.name || 'Упражнение'}
+                </span>
+            `).join('');
+        }
+
+        // Создать новую программу
+        async function createNewProgram() {
+            const nameInput = document.getElementById('program-name-input');
+            const name = nameInput.value.trim();
+
+            if (!name) {
+                showToast("Введите название программы тренировки", "error");
+                return;
+            }
+
+            if (selectedExercisesForCreation.length === 0) {
+                showToast("Выберите хотя бы одно упражнение в программу", "error");
+                return;
+            }
+
+            await db.programs.add({
+                name,
+                exerciseIds: [...selectedExercisesForCreation]
+            });
+
+            showToast("Программа создана успешно!", "success");
+            nameInput.value = '';
+            selectedExercisesForCreation = [];
+            
+            // Сбрасываем стили кнопок пула
+            const buttons = document.querySelectorAll('#program-exercise-selector-pool button');
+            buttons.forEach(b => b.className = "px-2 py-1 bg-zinc-900 border border-zinc-800 hover:border-brand/40 text-[10px] rounded-lg text-zinc-300 transition-all");
+
+            document.getElementById('selected-exercises-preview').innerText = "Упражнения не выбраны. Кликните по упражнениям выше.";
+
+            await loadRoutinesInSelectors();
+        }
+
+        // Удалить программу
+        async function deleteRoutine(id) {
+            const conf = await showConfirm("Вы уверены, что хотите удалить этот тренировочный шаблон?");
+            if (!conf) return;
+
+            await db.programs.delete(id);
+            showToast("Программа тренировок удалена", "info");
+            await loadRoutinesInSelectors();
+        }
+
+        // Запуск сессии из карточки на вкладке Программы
+        function startRoutineFromCard(id) {
+            document.getElementById('start-routine-select').value = id;
+            startWorkoutSession();
+            switchTab('workout');
+        }
+
+        // Заполнение списка упражнений в форме ввода (безопасное)
+        async function loadExercisesInSelect() {
+            const select = document.getElementById('exercise-select');
+            if (!select) return; // Предотвращаем ошибку, если элемент отсутствует в текущем DOM
+            const list = await db.exercises.toArray();
+            list.sort((a, b) => a.name.localeCompare(b.name));
+
+            select.innerHTML = list.map(item => `
+                <option value="${item.id}">${item.name}</option>
+            `).join('');
+        }
+
+        // СБОРКА И ЗАПУСК СЕССИИ ТРЕНИРОВКИ
+        async function startWorkoutSession(isFree = false) {
+            const todayStr = new Date().toISOString().split('T')[0];
+
+            if (isFree) {
+                const allEx = await db.exercises.toArray();
+                const ids = allEx.map(e => e.id);
+                activeSession = {
+                    type: 'free',
+                    name: 'Свободная тренировка',
+                    exerciseIds: ids
+                };
+            } else {
+                const routineId = parseInt(document.getElementById('start-routine-select').value);
+                const routine = await db.programs.get(routineId);
+                if (!routine) {
+                    showToast("Не удалось запустить программу", "error");
+                    return;
+                }
+                activeSession = {
+                    type: 'routine',
+                    id: routine.id,
+                    name: routine.name,
+                    exerciseIds: routine.exerciseIds
+                };
+            }
+
+            // Запоминаем в кэш сессию
+            localStorage.setItem('active_session_anatomyfit', JSON.stringify(activeSession));
+
+            // Перестраиваем UI
+            buildActiveSessionUI();
+            showToast(`Тренировка "${activeSession.name}" запущена!`, 'success');
+        }
+
+        // Восстановление сессии при перезапуске
+        function restoreSessionFromStorage() {
+            const cached = localStorage.getItem('active_session_anatomyfit');
+            if (cached) {
+                activeSession = JSON.parse(cached);
+                buildActiveSessionUI();
+            }
+        }
+
+        // Строит интерфейс запущенной тренировки
+        async function buildActiveSessionUI() {
+            if (!activeSession) {
+                document.getElementById('workout-idle-state').classList.remove('hidden');
+                document.getElementById('workout-active-state').classList.add('hidden');
+                document.getElementById('active-session-indicator').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('workout-idle-state').classList.add('hidden');
+            document.getElementById('workout-active-state').classList.remove('hidden');
+            document.getElementById('active-session-indicator').classList.remove('hidden');
+
+            document.getElementById('active-program-title').innerText = activeSession.name;
+
+            // Заполняем быстрые кнопки выбора упражнений в сессии
+            const exercises = await db.exercises.toArray();
+            const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+
+            const fastButtonsContainer = document.getElementById('active-session-exercises-list');
+            
+            // Фильтруем те, которые входят в сессию
+            const sessionExercises = activeSession.exerciseIds.map(id => exerciseMap[id]).filter(Boolean);
+
+            fastButtonsContainer.innerHTML = sessionExercises.map(ex => `
+                <button onclick="selectActiveExercise(${ex.id})" class="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-xs rounded-xl border border-zinc-800 text-zinc-300 hover:text-brand transition flex items-center gap-1 font-medium">
+                    <i data-lucide="dumbbell" class="w-3 h-3 text-zinc-500"></i> ${ex.name}
+                </button>
+            `).join('');
+
+            // Заполняем выпадающий список активной формы
+            const select = document.getElementById('active-exercise-select');
+            select.innerHTML = sessionExercises.map(ex => `
+                <option value="${ex.id}">${ex.name}</option>
+            `).join('');
+
+            if (sessionExercises.length > 0) {
+                select.value = sessionExercises[0].id;
+            }
+
+            onActiveExerciseChange();
+            await loadTodayLogs();
+            lucide.createIcons();
+        }
+
+        // Смена выбранного упражнения в активной форме
+        async function onActiveExerciseChange() {
+            const select = document.getElementById('active-exercise-select');
+            const exId = parseInt(select.value);
+            if (isNaN(exId)) return;
+
+            const exercises = await db.exercises.toArray();
+            const ex = exercises.find(e => e.id === exId);
+            if (!ex) return;
+
+            document.getElementById('current-workout-exercise-group').innerText = MUSCLE_NAMES[ex.primaryMuscle];
+
+            // Рассчитываем и выводим СОВЕТНИКА ПРОГРЕССИИ
+            await updateProgressionAdvice(exId);
+        }
+
+        // Умная функция анализа прогрессии на основе формулы Эпли и объема
+        async function updateProgressionAdvice(exerciseId) {
+            const adviceText = document.getElementById('progression-advice-text');
+            const prevBestText = document.getElementById('advisor-prev-best');
+
+            // Получаем все логи для этого упражнения
+            const allLogs = await db.workoutLogs.where('exerciseId').equals(exerciseId).toArray();
+            
+            if (allLogs.length === 0) {
+                prevBestText.innerText = "Первый раз";
+                adviceText.innerHTML = `🌟 <strong>Первое знакомство!</strong> Это упражнение выполняется впервые. 
+                <br>Подберите вес для ориентировочной работы в диапазоне <strong>8–12 чистых повторений</strong> с запасом в 1–2 раза (RIR).`;
+                return;
+            }
+
+            // Группируем логи по датам, чтобы найти последнюю тренировочную сессию
+            const dates = [...new Set(allLogs.map(l => l.date))].sort();
+            
+            // Если тренировались только сегодня, показываем её. Иначе - крайнюю прошлую дату
+            const todayStr = new Date().toISOString().split('T')[0];
+            let lastTrainingDate = dates[dates.length - 1];
+            if (lastTrainingDate === todayStr && dates.length > 1) {
+                lastTrainingDate = dates[dates.length - 2];
+            }
+
+            const lastSessionLogs = allLogs.filter(l => l.date === lastTrainingDate);
+
+            // Находим лучший подход (по максимальному одноповторному максимуму 1RM Эпли)
+            let bestSet = null;
+            let max1RM = 0;
+
+            lastSessionLogs.forEach(set => {
+                // Formula: 1RM = w * (1 + r/30)
+                const oneRM = set.weight * (1 + set.reps / 30);
+                if (oneRM > max1RM) {
+                    max1RM = oneRM;
+                    bestSet = set;
+                }
+            });
+
+            if (!bestSet) {
+                adviceText.innerText = "История отсутствует.";
+                return;
+            }
+
+            // Форматируем дату для вывода
+            const dateObj = new Date(lastTrainingDate);
+            const formattedDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+
+            prevBestText.innerText = `Last: ${formattedDate}`;
+
+            // Рассчитываем план прогрессии
+            const lastW = bestSet.weight;
+            const lastR = bestSet.reps;
+            
+            const nextWeight = lastW + 2.5; 
+            const targetRepsMin = Math.max(5, lastR - 2);
+            const targetRepsMax = lastR;
+
+            adviceText.innerHTML = `
+                В прошлый раз (${formattedDate}) вы сделали: <strong class="text-zinc-100">${lastW} кг × ${lastR} раз</strong> 
+                (Расчетный 1RM: <span class="text-brand font-mono">${Math.round(max1RM)} кг</span>).
+                <div class="mt-2 text-[11px] border-t border-zinc-900 pt-1.5 space-y-1">
+                    <div class="text-emerald-400 font-semibold">Варианты прогрессии на сегодня:</div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-brand"></span>
+                        <span><strong>Приоритет (Вес):</strong> Попробуйте <strong class="text-zinc-100">${nextWeight} кг</strong> на <strong class="text-zinc-100">${targetRepsMin}-${targetRepsMax} повт.</strong></span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500/50"></span>
+                        <span><strong>Объем (Репсы):</strong> Попробуйте те же <strong class="text-zinc-100">${lastW} кг</strong>, но сделайте <strong class="text-zinc-100">${lastR + 1} раз</strong>.</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Кнопка быстрого переключения упражнения на форме записи
+        function selectActiveExercise(id) {
+            document.getElementById('active-exercise-select').value = id;
+            onActiveExerciseChange();
+        }
+
+        // Записать подход во время тренировки
+        async function saveActiveSet() {
+            const exerciseId = parseInt(document.getElementById('active-exercise-select').value);
+            const weight = parseFloat(document.getElementById('input-weight').value);
+            const reps = parseInt(document.getElementById('input-reps').value);
+
+            if (isNaN(weight) || weight < 0 || isNaN(reps) || reps <= 0) {
+                showToast("Заполните вес и повторения корректно", "error");
+                return;
+            }
+
+            const todayStr = new Date().toISOString().split('T')[0];
+
+            await db.workoutLogs.add({
+                date: todayStr,
+                exerciseId,
+                weight,
+                reps
+            });
+
+            showToast("Подход записан!", "success");
+            await loadTodayLogs();
+            await updateStatistics();
+            await updateProgressionAdvice(exerciseId);
+        }
+
+        // Завершение тренировочной сессии
+        async function finishWorkoutSession() {
+            const conf = await showConfirm("Завершить текущую тренировку и сохранить всю историю?");
+            if (!conf) return;
+
+            localStorage.removeItem('active_session_anatomyfit');
+            activeSession = null;
+            buildActiveSessionUI();
+            showToast("Тренировка завершена! Отличная работа!", "success");
+            switchTab('stats');
+        }
+
+        // Заполнение списка упражнений в форме ввода
+        async function loadExercisesInSelect() {
+            const select = document.getElementById('exercise-select');
+            const list = await db.exercises.toArray();
+            list.sort((a, b) => a.name.localeCompare(b.name));
+
+            select.innerHTML = list.map(item => `
+                <option value="${item.id}">${item.name}</option>
+            `).join('');
+        }
+
+        // Создание своего упражнения
+        async function createCustomExercise() {
+            const nameInput = document.getElementById('custom-exercise-name');
+            const name = nameInput.value.trim();
+
+            const primaryMuscle = document.getElementById('custom-primary').value;
+            const secondaryMuscle = document.getElementById('custom-secondary').value;
+            const secondaryCoeff = parseFloat(document.getElementById('custom-secondary-coeff').value);
+            const tertiaryMuscle = document.getElementById('custom-tertiary').value;
+            const tertiaryCoeff = parseFloat(document.getElementById('custom-tertiary-coeff').value);
+
+            if (!name) {
+                showToast('Введите название упражнения!', 'error');
+                return;
+            }
+
+            const exists = await db.exercises.where('name').equalsIgnoreCase(name).first();
+            if (exists) {
+                showToast('Такое упражнение уже есть в базе', 'error');
+                return;
+            }
+
+            await db.exercises.add({
+                name,
+                primaryMuscle,
+                secondaryMuscle: secondaryMuscle || '',
+                secondaryCoeff: secondaryMuscle ? secondaryCoeff : 0,
+                tertiaryMuscle: tertiaryMuscle || '',
+                tertiaryCoeff: tertiaryMuscle ? tertiaryCoeff : 0,
+                isCustom: 1
+            });
+
+            nameInput.value = '';
+            showToast('Анатомическое упражнение создано!', 'success');
+            await loadExercisesInSelect();
+            await loadAllExercisesList();
+            await loadRoutinesInSelectors();
+        }
+
+        // Вывод сегодняшней тренировки
+        async function loadTodayLogs() {
+            const container = document.getElementById('today-logs-container');
+            const todayStr = new Date().toISOString().split('T')[0];
+
+            const logs = await db.workoutLogs.where('date').equals(todayStr).toArray();
+            const exercises = await db.exercises.toArray();
+            const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+
+            if (logs.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8 text-zinc-500 text-sm bg-brand-card rounded-xl border border-zinc-800 border-dashed">
+                        Нет сохраненных подходов за сегодня. Сделайте первый подход!
+                    </div>
+                `;
+                return;
+            }
+
+            logs.reverse(); // Новые вверху
+
+            container.innerHTML = logs.map(log => {
+                const ex = exerciseMap[log.exerciseId] || { name: 'Удаленное упражнение', primaryMuscle: 'chest' };
+                const vol = log.weight * log.reps;
+                
+                let details = `Цель: ${MUSCLE_NAMES[ex.primaryMuscle]}`;
+                if (ex.secondaryMuscle) details += ` | + ${MUSCLE_NAMES[ex.secondaryMuscle]}`;
+
+                return `
+                    <div class="bg-brand-card p-3 rounded-xl border border-zinc-800 flex items-center justify-between">
+                        <div>
+                            <div class="font-bold text-xs text-zinc-200">${ex.name}</div>
+                            <div class="text-[9px] text-zinc-400 mt-1 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-brand font-medium">Объем: ${vol} кг</span>
+                                <span>${details}</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-mono text-xs font-bold text-zinc-100 bg-zinc-900 px-2 py-1 rounded-lg border border-zinc-800">
+                                ${log.weight} × ${log.reps}
+                            </span>
+                            <button onclick="deleteLog(${log.id})" class="text-zinc-500 hover:text-red-400 transition p-1">
+                                <i data-lucide="trash" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        // Удаление подхода
+        async function deleteLog(id) {
+            const confirm = await showConfirm("Удалить выбранный подход?");
+            if (!confirm) return;
+
+            await db.workoutLogs.delete(id);
+            showToast('Подход удален', 'info');
+            await loadTodayLogs();
+            await updateStatistics();
+            
+            // Обновляем советник на форме
+            const select = document.getElementById('active-exercise-select');
+            if (select && select.value) {
+                updateProgressionAdvice(parseInt(select.value));
+            }
+        }
+
+        // Библиотека упражнений
+        async function loadAllExercisesList() {
+            const container = document.getElementById('exercise-list-container');
+            const list = await db.exercises.toArray();
+            list.sort((a, b) => a.name.localeCompare(b.name));
+
+            container.innerHTML = list.map(item => {
+                let synergyInfo = `Основная: ${MUSCLE_NAMES[item.primaryMuscle]}`;
+                if (item.secondaryMuscle) {
+                    synergyInfo += ` | Вторичная: ${MUSCLE_NAMES[item.secondaryMuscle]} (${item.secondaryCoeff})`;
+                }
+                if (item.tertiaryMuscle) {
+                    synergyInfo += ` | Стабилизатор: ${MUSCLE_NAMES[item.tertiaryMuscle]} (${item.tertiaryCoeff})`;
+                }
+
+                return `
+                    <div class="bg-zinc-900 px-3 py-2.5 rounded-xl border border-zinc-800 flex justify-between items-center text-xs">
+                        <div>
+                            <span class="font-semibold text-zinc-200 block text-xs">${item.name}</span>
+                            <span class="text-[10px] text-zinc-400 mt-0.5 block font-medium leading-normal">${synergyInfo}</span>
+                        </div>
+                        ${item.isCustom ? `
+                            <button onclick="deleteCustomExercise(${item.id})" class="text-zinc-500 hover:text-red-400 p-1 flex-shrink-0 ml-2">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        ` : `
+                            <span class="text-[9px] text-zinc-600 uppercase font-mono tracking-wider flex-shrink-0 ml-2">Базовое</span>
+                        `}
+                    </div>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        // Удаление упражнения
+        async function deleteCustomExercise(id) {
+            const confirm = await showConfirm("Вы действительно хотите удалить это упражнение из библиотеки?");
+            if (!confirm) return;
+
+            await db.exercises.delete(id);
+            showToast('Упражнение удалено из вашей библиотеки', 'info');
+            await loadExercisesInSelect();
+            await loadAllExercisesList();
+            await loadRoutinesInSelectors();
+        }
+
+        // Обновление всей аналитики
+        async function updateStatistics() {
+            const logs = await db.workoutLogs.toArray();
+            const exercises = await db.exercises.toArray();
+            const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+
+            // Карточки
+            document.getElementById('total-sets-count').innerText = logs.length;
+
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            const oneWeekAgoStr = oneWeekAgo.toISOString().split('T')[0];
+
+            const weeklyLogs = logs.filter(l => l.date >= oneWeekAgoStr);
+            const weeklyVolumeSum = weeklyLogs.reduce((sum, log) => sum + (log.weight * log.reps), 0);
+            document.getElementById('weekly-tonnage').innerText = `${weeklyVolumeSum} кг`;
+
+            // Расчет по 15 группам мышц
+            const muscleLoads = {};
+            for (const key of Object.keys(MUSCLE_NAMES)) {
+                muscleLoads[key] = 0;
+            }
+
+            logs.forEach(log => {
+                const ex = exerciseMap[log.exerciseId];
+                if (!ex) return;
+
+                const baseVolume = log.weight * log.reps;
+
+                if (muscleLoads[ex.primaryMuscle] !== undefined) {
+                    muscleLoads[ex.primaryMuscle] += baseVolume;
+                }
+                if (ex.secondaryMuscle && muscleLoads[ex.secondaryMuscle] !== undefined) {
+                    muscleLoads[ex.secondaryMuscle] += baseVolume * ex.secondaryCoeff;
+                }
+                if (ex.tertiaryMuscle && muscleLoads[ex.tertiaryMuscle] !== undefined) {
+                    muscleLoads[ex.tertiaryMuscle] += baseVolume * ex.tertiaryCoeff;
+                }
+            });
+
+            renderMuscleProgressBars(muscleLoads);
+            renderRadarMuscleChart(muscleLoads);
+
+            // Динамика по дням за последние 7 дней
+            const dayLabels = [];
+            const dayVolumes = [];
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const dStr = d.toISOString().split('T')[0];
+                
+                const label = d.toLocaleDateString('ru-RU', { weekday: 'short' });
+                dayLabels.push(label);
+
+                const daysLogs = logs.filter(l => l.date === dStr);
+                const volumeSum = daysLogs.reduce((sum, l) => sum + (l.weight * l.reps), 0);
+                dayVolumes.push(volumeSum);
+            }
+
+            renderHistoryChart(dayLabels, dayVolumes);
+        }
+
+        // Рендер баров на вкладке Анатомии
+        function renderMuscleProgressBars(muscleLoads) {
+            const container = document.getElementById('muscle-progress-bars');
+            
+            const sortedMuscles = Object.entries(muscleLoads)
+                .map(([key, value]) => ({ key, name: MUSCLE_NAMES[key], value: Math.round(value) }))
+                .sort((a, b) => b.value - a.value);
+
+            const maxLoad = Math.max(...sortedMuscles.map(m => m.value)) || 1;
+
+            if (maxLoad === 1) {
+                container.innerHTML = `
+                    <div class="text-center py-4 text-xs text-zinc-500">
+                        Данные появятся после добавления первой тренировки.
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = sortedMuscles.map(muscle => {
+                const percent = Math.min(100, Math.round((muscle.value / maxLoad) * 100));
+                
+                let barColor = 'bg-zinc-700';
+                if (percent > 80) barColor = 'bg-emerald-500';
+                else if (percent > 45) barColor = 'bg-teal-500';
+                else if (percent > 15) barColor = 'bg-zinc-600';
+
+                return `
+                    <div class="space-y-1">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="font-medium text-zinc-300 text-[11px]">${muscle.name}</span>
+                            <span class="font-mono text-zinc-400 text-[10px]">${muscle.value} кг</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-950">
+                            <div class="h-full ${barColor} rounded-full transition-all duration-500" style="width: ${percent}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderRadarMuscleChart(muscleLoads) {
+            const ctx = document.getElementById('muscleChart').getContext('2d');
+            
+            if (muscleChart) {
+                muscleChart.destroy();
+            }
+
+            const sortedKeys = Object.keys(muscleLoads);
+            const labels = sortedKeys.map(k => MUSCLE_NAMES[k]);
+            const values = sortedKeys.map(k => Math.round(muscleLoads[k]));
+            const hasData = values.some(v => v > 0);
+
+            if (!hasData) {
+                muscleChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Нет данных'],
+                        datasets: [{ data: [1], backgroundColor: ['#27272a'], borderWidth: 0 }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } }
+                    }
+                });
+                return;
+            }
+
+            muscleChart = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Тоннаж (кг)',
+                        data: values,
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        borderColor: '#10b981',
+                        pointBackgroundColor: '#10b981',
+                        borderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            angleLines: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { display: false },
+                            pointLabels: {
+                                color: '#a1a1aa',
+                                font: { size: 8 }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        function renderHistoryChart(labels, values) {
+            const ctx = document.getElementById('historyChart').getContext('2d');
+            
+            if (historyChart) {
+                historyChart.destroy();
+            }
+
+            historyChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Тоннаж за день',
+                        data: values,
+                        backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                        borderColor: '#10b981',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        hoverBackgroundColor: '#10b981'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            grid: { color: '#27272a' },
+                            ticks: { color: '#a1a1aa', font: { size: 8 } }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#a1a1aa', font: { size: 9 } }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        // Всплывающие уведомления
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            const toastIcon = document.getElementById('toast-icon');
+
+            toastMsg.innerText = message;
+            if (type === 'success') {
+                toastIcon.setAttribute('data-lucide', 'check-circle');
+                toastIcon.className = "w-4 h-4 text-emerald-400";
+            } else if (type === 'error') {
+                toastIcon.setAttribute('data-lucide', 'alert-triangle');
+                toastIcon.className = "w-4 h-4 text-red-400";
+            } else {
+                toastIcon.setAttribute('data-lucide', 'info');
+                toastIcon.className = "w-4 h-4 text-brand";
+            }
+            lucide.createIcons();
+
+            toast.classList.remove('opacity-0', 'translate-y-2');
+            toast.classList.add('opacity-100', 'translate-y-0');
+
+            setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                toast.classList.add('opacity-0', 'translate-y-2');
+            }, 3000);
+        }
+
+        // Показ модалки подтверждения
+        function showConfirm(text) {
+            document.getElementById('confirm-text').innerText = text;
+            document.getElementById('confirm-modal').classList.remove('hidden');
+            return new Promise((resolve) => {
+                pendingConfirmResolve = resolve;
+            });
+        }
+
+        function closeConfirm(result) {
+            document.getElementById('confirm-modal').classList.add('hidden');
+            if (pendingConfirmResolve) {
+                pendingConfirmResolve(result);
+                pendingConfirmResolve = null;
+            }
+        }
+
+        // Переключение вкладок
+        function switchTab(tabName) {
+            const sections = ['workout', 'programs', 'stats', 'exercises', 'settings'];
+            sections.forEach(sec => {
+                const el = document.getElementById(`tab-${sec}`);
+                const nav = document.getElementById(`nav-${sec}`);
+                if (sec === tabName) {
+                    el.classList.remove('hidden');
+                    nav.classList.add('text-brand');
+                    nav.classList.remove('text-zinc-400');
+                } else {
+                    el.classList.add('hidden');
+                    nav.classList.remove('text-brand');
+                    nav.classList.add('text-zinc-400');
+                }
+            });
+
+            if (tabName === 'stats') {
+                updateStatistics();
+            } else if (tabName === 'exercises') {
+                loadAllExercisesList();
+            } else if (tabName === 'programs') {
+                loadRoutinesInSelectors();
+            } else if (tabName === 'workout') {
+                buildActiveSessionUI();
+            }
+        }
+
+        // Экспорт в JSON
+        async function exportData() {
+            const exercises = await db.exercises.toArray();
+            const logs = await db.workoutLogs.toArray();
+            const programs = await db.programs.toArray();
+
+            const exportObj = {
+                app: 'AnatomyFitPWA',
+                version: 3,
+                exercises,
+                logs,
+                programs
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj));
+            const dlAnchorElem = document.createElement('a');
+            dlAnchorElem.setAttribute("href", dataStr);
+            dlAnchorElem.setAttribute("download", `anatomyfit_backup_v3_${new Date().toISOString().split('T')[0]}.json`);
+            dlAnchorElem.click();
+            showToast('Резервная копия скачана!', 'success');
+        }
+
+        // Импорт
+        function importData(event) {
+            const input = event.target;
+            const reader = new FileReader();
+            
+            reader.onload = async function() {
+                try {
+                    const imported = JSON.parse(reader.result);
+                    if (imported.app !== 'AnatomyFitPWA' && imported.app !== 'SimpleWorkoutPWA') {
+                        throw new Error('Некорректный файл резервной копии');
+                    }
+
+                    const confirm = await showConfirm("Импортировать резервную копию? Текущие данные на вашем телефоне будут перезаписаны.");
+                    if (!confirm) return;
+
+                    await db.exercises.clear();
+                    await db.workoutLogs.clear();
+                    await db.programs.clear();
+
+                    if (imported.exercises && imported.exercises.length > 0) {
+                        await db.exercises.bulkAdd(imported.exercises);
+                    }
+                    if (imported.logs && imported.logs.length > 0) {
+                        await db.workoutLogs.bulkAdd(imported.logs);
+                    }
+                    if (imported.programs && imported.programs.length > 0) {
+                        await db.programs.bulkAdd(imported.programs);
+                    } else {
+                        await db.programs.bulkAdd(DEFAULT_PROGRAMS);
+                    }
+
+                    showToast('Резервная копия развернута успешно!', 'success');
+                    await loadRoutinesInSelectors();
+                    await loadExercisesInSelect();
+                    await loadAllExercisesList();
+                    await updateStatistics();
+                    buildActiveSessionUI();
+                    
+                } catch (e) {
+                    showToast('Не удалось импортировать файл', 'error');
+                }
+            };
+
+            reader.readAsText(input.files[0]);
+        }
+
+        // Полный сброс
+        async function confirmClearAll() {
+            const confirm = await showConfirm("Вы уверены, что хотите стереть все данные? Все программы, упражнения и статистика тренировок будут возвращены к дефолтным значениям.");
+            if (!confirm) return;
+
+            localStorage.removeItem('active_session_anatomyfit');
+            activeSession = null;
+
+            await db.workoutLogs.clear();
+            await db.exercises.clear();
+            await db.programs.clear();
+
+            await db.exercises.bulkAdd(DEFAULT_EXERCISES);
+            await db.programs.bulkAdd(DEFAULT_PROGRAMS);
+
+            showToast('Приложение успешно сброшено', 'info');
+            await loadRoutinesInSelectors();
+            await loadExercisesInSelect();
+            await loadAllExercisesList();
+            await updateStatistics();
+            buildActiveSessionUI();
+        }
+
+        // Настройка PWA (Manifest & SW)
+        function initPWA() {
+            const manifest = {
+                "name": "AnatomyFit — Аналитика Прогрессии Нагрузок",
+                "short_name": "AnatomyFit",
+                "description": "Анатомический дневник тренировок с автоматическими советами по прогрессии нагрузки",
+                "start_url": ".",
+                "display": "standalone",
+                "background_color": "#09090b",
+                "theme_color": "#10b981",
+                "icons": [
+                    {
+                        "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%2310b981'><rect width='100' height='100' rx='20'/><path d='M30 40 h10 v20 h-10 z M60 40 h10 v20 h-10 z M40 45 h20 v10 h-20 z' fill='black'/></svg>",
+                        "sizes": "192x192",
+                        "type": "image/svg+xml"
+                    },
+                    {
+                        "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%2310b981'><rect width='100' height='100' rx='20'/><path d='M30 40 h10 v20 h-10 z M60 40 h10 v20 h-10 z M40 45 h20 v10 h-20 z' fill='black'/></svg>",
+                        "sizes": "512x512",
+                        "type": "image/svg+xml"
+                    }
+                ]
+            };
+
+            const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+            document.getElementById('pwa-manifest').setAttribute('href', URL.createObjectURL(manifestBlob));
+
+            if ('serviceWorker' in navigator) {
+                const swCode = `
+                    const CACHE_NAME = 'anatomyfit-v3';
+                    const ASSETS = [
+                        '${window.location.href}',
+                        'https://cdn.tailwindcss.com',
+                        'https://unpkg.com/dexie/dist/dexie.js',
+                        'https://cdn.jsdelivr.net/npm/chart.js',
+                        'https://unpkg.com/lucide@latest'
+                    ];
+
+                    self.addEventListener('install', e => {
+                        e.waitUntil(
+                            caches.open(CACHE_NAME).then(cache => {
+                                return cache.addAll(ASSETS);
+                            }).then(() => self.skipWaiting())
+                        );
+                    });
+
+                    self.addEventListener('activate', e => {
+                        e.waitUntil(self.clients.claim());
+                    });
+
+                    self.addEventListener('fetch', e => {
+                        e.respondWith(
+                            caches.match(e.request).then(response => {
+                                return response || fetch(e.request);
+                            })
+                        );
+                    });
+                `;
+
+                const swBlob = new Blob([swCode], { type: 'application/javascript' });
+                navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(() => {});
+            }
+        }
+    </script>
+</body>
+</html>
