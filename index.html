@@ -362,7 +362,7 @@
         <section id="tab-exercises" class="space-y-6 hidden">
             <!-- Конструктор кастомного упражнения -->
             <div class="bg-brand-card rounded-2xl p-5 border border-zinc-800 space-y-4">
-                <h3 class="font-bold text-zinc-200 flex items-center gap-2">
+                <h3 id="custom-exercise-form-title" class="font-bold text-zinc-200 flex items-center gap-2">
                     <i data-lucide="fingerprint" class="w-5 h-5 text-brand"></i>
                     Анатомический конструктор
                 </h3>
@@ -415,8 +415,17 @@
                         </div>
                     </div>
 
-                    <button onclick="createCustomExercise()" class="w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-150 text-sm">
+                    <!-- Чекбокс собственного веса -->
+                    <div class="flex items-center gap-2 py-1 px-1">
+                        <input type="checkbox" id="custom-uses-bodyweight" class="w-4 h-4 rounded border-zinc-800 bg-zinc-900 text-brand focus:ring-brand focus:ring-offset-zinc-900">
+                        <label for="custom-uses-bodyweight" class="text-xs text-zinc-400 cursor-pointer select-none">Упражнение со своим весом (подтягивания, отжимания и т.д.)</label>
+                    </div>
+
+                    <button onclick="createCustomExercise()" id="custom-exercise-save-btn" class="w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-150 text-sm">
                         Записать упражнение в базу
+                    </button>
+                    <button onclick="cancelEditExercise()" id="custom-exercise-cancel-btn" class="w-full bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 font-semibold py-2.5 rounded-xl transition text-sm hidden">
+                        Отменить редактирование
                     </button>
                 </div>
             </div>
@@ -539,7 +548,8 @@
             <div class="flex items-center justify-between border-b border-zinc-800 pb-3 flex-shrink-0">
                 <div>
                     <h3 class="font-bold text-zinc-100 text-base" id="detail-modal-title">Детали тренировки</h3>
-                    <span class="text-[10px] text-zinc-500 font-mono" id="detail-modal-date">--</span>
+                    <span class="text-[10px] text-zinc-500 font-mono block" id="detail-modal-date">--</span>
+                    <input type="date" id="detail-modal-date-input" class="hidden bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-200 focus:outline-none focus:border-brand font-mono mt-1">
                 </div>
                 <button onclick="closeWorkoutDetails()" class="text-zinc-400 hover:text-zinc-200 p-1">
                     <i data-lucide="x" class="w-5 h-5"></i>
@@ -548,13 +558,25 @@
             <div class="overflow-y-auto pr-1 flex-1 py-1 space-y-3 font-medium" id="detail-modal-logs">
                 <!-- Рендерится динамически: Упражнения и подходы -->
             </div>
-            <div class="flex gap-3 pt-3 border-t border-zinc-800 flex-shrink-0">
-                <button onclick="deleteWorkoutSessionFromDetail()" class="flex-1 py-2.5 bg-red-600/10 border border-red-500/20 hover:bg-red-500/20 text-red-400 font-semibold rounded-xl text-[11px] transition flex items-center justify-center gap-1">
-                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                    Удалить
+            <div class="flex gap-2 pt-3 border-t border-zinc-800 flex-shrink-0" id="detail-modal-footer">
+                <button id="btn-edit-workout-session" onclick="toggleEditWorkoutSession()" class="flex-1 py-2.5 bg-brand/10 border border-brand/20 hover:bg-brand/20 text-brand font-semibold rounded-xl text-[11px] transition flex items-center justify-center gap-1">
+                    <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                    Редактировать
                 </button>
-                <button onclick="closeWorkoutDetails()" class="flex-1 py-2.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-[11px] transition">
+                <button onclick="deleteWorkoutSessionFromDetail()" class="py-2.5 px-3 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-400 font-semibold rounded-xl text-[11px] transition flex items-center justify-center" title="Удалить тренировку">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                </button>
+                <button onclick="closeWorkoutDetails()" class="py-2.5 px-4 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-[11px] transition">
                     Закрыть
+                </button>
+            </div>
+            <div class="flex gap-2 pt-3 border-t border-zinc-800 flex-shrink-0 hidden" id="detail-modal-edit-footer">
+                <button onclick="saveWorkoutSessionEdits()" class="flex-1 py-2.5 bg-brand hover:bg-brand-dark text-black font-bold rounded-xl text-[11px] transition flex items-center justify-center gap-1">
+                    <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                    Сохранить
+                </button>
+                <button onclick="cancelWorkoutSessionEdits()" class="flex-1 py-2.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-[11px] transition">
+                    Отмена
                 </button>
             </div>
         </div>
@@ -1420,6 +1442,8 @@
             `).join('');
         }
 
+        let editingExerciseId = null;
+
         async function createCustomExercise() {
             const nameInput = document.getElementById('custom-exercise-name');
             const name = nameInput ? nameInput.value.trim() : '';
@@ -1429,33 +1453,131 @@
             const secondaryCoeff = parseFloat(document.getElementById('custom-secondary-coeff').value);
             const tertiaryMuscle = document.getElementById('custom-tertiary').value;
             const tertiaryCoeff = parseFloat(document.getElementById('custom-tertiary-coeff').value);
+            const usesBodyweight = document.getElementById('custom-uses-bodyweight').checked ? 1 : 0;
 
             if (!name) {
                 showToast('Введите название упражнения!', 'error');
                 return;
             }
 
-            const exists = await db.exercises.where('name').equalsIgnoreCase(name).first();
-            if (exists) {
-                showToast('Такое упражнение уже есть в базе', 'error');
-                return;
+            if (editingExerciseId !== null) {
+                // Режим редактирования
+                const exists = await db.exercises.where('name').equalsIgnoreCase(name).filter(ex => ex.id !== editingExerciseId).first();
+                if (exists) {
+                    showToast('Такое упражнение уже есть в базе', 'error');
+                    return;
+                }
+
+                await db.exercises.update(editingExerciseId, {
+                    name,
+                    primaryMuscle,
+                    secondaryMuscle: secondaryMuscle || '',
+                    secondaryCoeff: secondaryMuscle ? secondaryCoeff : 0,
+                    tertiaryMuscle: tertiaryMuscle || '',
+                    tertiaryCoeff: tertiaryMuscle ? tertiaryCoeff : 0,
+                    usesBodyweight
+                });
+
+                showToast('Упражнение успешно обновлено!', 'success');
+                cancelEditExercise();
+            } else {
+                // Режим создания
+                const exists = await db.exercises.where('name').equalsIgnoreCase(name).first();
+                if (exists) {
+                    showToast('Такое упражнение уже есть в базе', 'error');
+                    return;
+                }
+
+                await db.exercises.add({
+                    name,
+                    primaryMuscle,
+                    secondaryMuscle: secondaryMuscle || '',
+                    secondaryCoeff: secondaryMuscle ? secondaryCoeff : 0,
+                    tertiaryMuscle: tertiaryMuscle || '',
+                    tertiaryCoeff: tertiaryMuscle ? tertiaryCoeff : 0,
+                    isCustom: 1,
+                    usesBodyweight
+                });
+
+                if (nameInput) nameInput.value = '';
+                document.getElementById('custom-uses-bodyweight').checked = false;
+                showToast('Анатомическое упражнение создано!', 'success');
             }
 
-            await db.exercises.add({
-                name,
-                primaryMuscle,
-                secondaryMuscle: secondaryMuscle || '',
-                secondaryCoeff: secondaryMuscle ? secondaryCoeff : 0,
-                tertiaryMuscle: tertiaryMuscle || '',
-                tertiaryCoeff: tertiaryMuscle ? tertiaryCoeff : 0,
-                isCustom: 1
-            });
-
-            if (nameInput) nameInput.value = '';
-            showToast('Анатомическое упражнение создано!', 'success');
             await loadExercisesInSelect();
             await loadAllExercisesList();
             await loadRoutinesInSelectors();
+        }
+
+        async function editExercise(id) {
+            editingExerciseId = id;
+            const ex = await db.exercises.get(id);
+            if (!ex) return;
+
+            // Заполняем форму данными упражнения
+            const nameInput = document.getElementById('custom-exercise-name');
+            if (nameInput) nameInput.value = ex.name;
+
+            document.getElementById('custom-primary').value = ex.primaryMuscle;
+            document.getElementById('custom-secondary').value = ex.secondaryMuscle || '';
+            document.getElementById('custom-secondary-coeff').value = ex.secondaryMuscle ? ex.secondaryCoeff : 0.5;
+            document.getElementById('coeff-sec-label').innerText = Math.round((ex.secondaryMuscle ? ex.secondaryCoeff : 0.5) * 100) + '%';
+            
+            document.getElementById('custom-tertiary').value = ex.tertiaryMuscle || '';
+            document.getElementById('custom-tertiary-coeff').value = ex.tertiaryMuscle ? ex.tertiaryCoeff : 0.3;
+            document.getElementById('coeff-tert-label').innerText = Math.round((ex.tertiaryMuscle ? ex.tertiaryCoeff : 0.3) * 100) + '%';
+            
+            document.getElementById('custom-uses-bodyweight').checked = ex.usesBodyweight === 1;
+
+            // Обновляем визуальное оформление
+            const formTitle = document.getElementById('custom-exercise-form-title');
+            if (formTitle) formTitle.innerHTML = `<i data-lucide="edit-3" class="w-5 h-5 text-brand"></i> Редактирование упражнения`;
+
+            const saveBtn = document.getElementById('custom-exercise-save-btn');
+            if (saveBtn) {
+                saveBtn.innerText = "Сохранить изменения";
+                saveBtn.className = "w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-150 text-sm";
+            }
+
+            const cancelBtn = document.getElementById('custom-exercise-cancel-btn');
+            if (cancelBtn) cancelBtn.classList.remove('hidden');
+
+            lucide.createIcons();
+
+            // Плавно скроллим наверх к форме
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function cancelEditExercise() {
+            editingExerciseId = null;
+
+            const nameInput = document.getElementById('custom-exercise-name');
+            if (nameInput) nameInput.value = '';
+
+            document.getElementById('custom-primary').selectedIndex = 0;
+            document.getElementById('custom-secondary').value = '';
+            document.getElementById('custom-secondary-coeff').value = 0.5;
+            document.getElementById('coeff-sec-label').innerText = '50%';
+            
+            document.getElementById('custom-tertiary').value = '';
+            document.getElementById('custom-tertiary-coeff').value = 0.3;
+            document.getElementById('coeff-tert-label').innerText = '30%';
+            
+            document.getElementById('custom-uses-bodyweight').checked = false;
+
+            const formTitle = document.getElementById('custom-exercise-form-title');
+            if (formTitle) formTitle.innerHTML = `<i data-lucide="fingerprint" class="w-5 h-5 text-brand"></i> Анатомический конструктор`;
+
+            const saveBtn = document.getElementById('custom-exercise-save-btn');
+            if (saveBtn) {
+                saveBtn.innerText = "Записать упражнение в базу";
+                saveBtn.className = "w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-150 text-sm";
+            }
+
+            const cancelBtn = document.getElementById('custom-exercise-cancel-btn');
+            if (cancelBtn) cancelBtn.classList.add('hidden');
+
+            lucide.createIcons();
         }
 
         async function loadTodayLogs() {
@@ -1630,6 +1752,20 @@
             selectedHistorySessionId = sessionId;
             selectedHistoryDate = date;
 
+            isEditingWorkoutSession = false;
+            
+            const dateText = document.getElementById('detail-modal-date');
+            if (dateText) dateText.classList.remove('hidden');
+            
+            const dateInput = document.getElementById('detail-modal-date-input');
+            if (dateInput) dateInput.classList.add('hidden');
+
+            const viewFooter = document.getElementById('detail-modal-footer');
+            if (viewFooter) viewFooter.classList.remove('hidden');
+
+            const editFooter = document.getElementById('detail-modal-edit-footer');
+            if (editFooter) editFooter.classList.add('hidden');
+
             const modal = document.getElementById('workout-details-modal');
             const titleEl = document.getElementById('detail-modal-title');
             const dateEl = document.getElementById('detail-modal-date');
@@ -1703,6 +1839,7 @@
             if (modal) modal.classList.add('hidden');
             selectedHistorySessionId = null;
             selectedHistoryDate = null;
+            isEditingWorkoutSession = false;
         }
 
         async function deleteWorkoutSessionFromDetail() {
@@ -1721,6 +1858,243 @@
             await loadWorkoutHistory();
             await updateStatistics();
             await loadTodayLogs();
+        }
+
+        let isEditingWorkoutSession = false;
+        let editingSessionLogs = [];
+        let editingSessionDate = '';
+        let editingSessionId = null;
+
+        async function toggleEditWorkoutSession() {
+            isEditingWorkoutSession = true;
+            editingSessionId = selectedHistorySessionId;
+            editingSessionDate = selectedHistoryDate;
+
+            let sessionLogs = [];
+            if (editingSessionId) {
+                sessionLogs = await db.workoutLogs.where('sessionId').equals(editingSessionId).toArray();
+            } else {
+                sessionLogs = await db.workoutLogs.where('date').equals(editingSessionDate).filter(l => !l.sessionId).toArray();
+            }
+            editingSessionLogs = sessionLogs.map(l => ({ ...l }));
+
+            document.getElementById('detail-modal-date').classList.add('hidden');
+            
+            const dateInput = document.getElementById('detail-modal-date-input');
+            dateInput.classList.remove('hidden');
+            dateInput.value = editingSessionDate;
+
+            document.getElementById('detail-modal-footer').classList.add('hidden');
+            document.getElementById('detail-modal-edit-footer').classList.remove('hidden');
+
+            await renderWorkoutDetailsEditMode();
+        }
+
+        async function renderWorkoutDetailsEditMode() {
+            const logsEl = document.getElementById('detail-modal-logs');
+            if (!logsEl) return;
+
+            const exercises = await db.exercises.toArray();
+            const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+
+            const logsByExercise = {};
+            const exerciseIdsInLogs = [];
+            
+            editingSessionLogs.forEach(log => {
+                if (!exerciseIdsInLogs.includes(log.exerciseId)) {
+                    exerciseIdsInLogs.push(log.exerciseId);
+                }
+            });
+
+            exerciseIdsInLogs.forEach(exId => {
+                logsByExercise[exId] = [];
+            });
+
+            editingSessionLogs.forEach((log, index) => {
+                log._arrayIndex = index;
+                logsByExercise[log.exerciseId].push(log);
+            });
+
+            let html = '';
+
+            if (editingSessionLogs.length === 0) {
+                html = `
+                    <div class="text-center py-6 text-xs text-zinc-500 italic">
+                        Нет упражнений в тренировке. Добавьте упражнение ниже.
+                    </div>
+                `;
+            } else {
+                html = Object.entries(logsByExercise).map(([exId, logs]) => {
+                    const ex = exerciseMap[exId] || { name: 'Удаленное упражнение', usesBodyweight: 0 };
+                    const setsHtml = logs.map((log, index) => {
+                        return `
+                            <div class="flex items-center gap-1.5 bg-zinc-900 border border-zinc-850 p-1.5 rounded-lg">
+                                <span class="text-[10px] font-mono text-zinc-500 w-4 text-center">${index + 1}:</span>
+                                <div class="flex items-center gap-0.5 flex-1 min-w-0">
+                                    <input type="number" step="0.5" 
+                                           class="edit-set-weight w-16 bg-zinc-950 border border-zinc-800 rounded px-1 py-0.5 text-xs text-center font-mono text-zinc-200 focus:outline-none focus:border-brand" 
+                                           value="${log.weight}" 
+                                           onchange="updateEditingSetWeight(${log._arrayIndex}, this.value)">
+                                    <span class="text-[9px] text-zinc-500">${ex.usesBodyweight ? 'св' : 'кг'}</span>
+                                </div>
+                                <div class="flex items-center gap-0.5 flex-1 min-w-0">
+                                    <input type="number" 
+                                           class="edit-set-reps w-12 bg-zinc-950 border border-zinc-800 rounded px-1 py-0.5 text-xs text-center font-mono text-zinc-200 focus:outline-none focus:border-brand" 
+                                           value="${log.reps}" 
+                                           onchange="updateEditingSetReps(${log._arrayIndex}, this.value)">
+                                    <span class="text-[9px] text-zinc-500">раз</span>
+                                </div>
+                                <button onclick="removeSetFromEditList(${log._arrayIndex})" class="text-zinc-500 hover:text-red-400 p-0.5 transition" title="Удалить подход">
+                                    <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                        `;
+                    }).join('');
+
+                    return `
+                        <div class="space-y-2 bg-zinc-900/20 p-2.5 rounded-xl border border-zinc-850">
+                            <div class="text-xs font-bold text-zinc-200 flex items-center justify-between">
+                                <div class="flex items-center gap-1.5 truncate">
+                                    <i data-lucide="dumbbell" class="w-3.5 h-3.5 text-zinc-500 flex-shrink-0"></i>
+                                    <span class="truncate">${ex.name}</span>
+                                </div>
+                                <button onclick="addSetToEditList(${exId})" class="text-[10px] text-brand hover:underline flex items-center gap-0.5 font-semibold">
+                                    <i data-lucide="plus" class="w-3 h-3"></i> Подход
+                                </button>
+                            </div>
+                            <div class="grid grid-cols-1 gap-1.5">
+                                ${setsHtml}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            const allExercisesSorted = exercises.sort((a, b) => a.name.localeCompare(b.name));
+            const optionsHtml = allExercisesSorted.map(ex => `<option value="${ex.id}">${ex.name}</option>`).join('');
+
+            html += `
+                <div class="pt-3 border-t border-zinc-800 space-y-2">
+                    <label class="block text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Добавить упражнение:</label>
+                    <div class="flex gap-2">
+                        <select id="edit-session-add-exercise-select" class="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-zinc-200 focus:outline-none focus:border-brand">
+                            ${optionsHtml}
+                        </select>
+                        <button onclick="addExerciseToEditSession()" class="bg-brand/10 hover:bg-brand/20 text-brand border border-brand/20 px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1">
+                            <i data-lucide="plus" class="w-3.5 h-3.5"></i> Добавить
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            logsEl.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        function updateEditingSetWeight(arrayIndex, val) {
+            const weight = parseFloat(val);
+            if (!isNaN(weight)) {
+                editingSessionLogs[arrayIndex].weight = weight;
+            }
+        }
+
+        function updateEditingSetReps(arrayIndex, val) {
+            const reps = parseInt(val);
+            if (!isNaN(reps)) {
+                editingSessionLogs[arrayIndex].reps = reps;
+            }
+        }
+
+        function addSetToEditList(exerciseId) {
+            const lastSet = [...editingSessionLogs].reverse().find(log => log.exerciseId === exerciseId);
+            const weight = lastSet ? lastSet.weight : 0;
+            const reps = lastSet ? lastSet.reps : 10;
+
+            editingSessionLogs.push({
+                date: editingSessionDate,
+                exerciseId,
+                weight,
+                reps,
+                sessionId: editingSessionId || Date.now()
+            });
+
+            renderWorkoutDetailsEditMode();
+        }
+
+        function removeSetFromEditList(arrayIndex) {
+            editingSessionLogs.splice(arrayIndex, 1);
+            renderWorkoutDetailsEditMode();
+        }
+
+        function addExerciseToEditSession() {
+            const select = document.getElementById('edit-session-add-exercise-select');
+            if (!select) return;
+            const exId = parseInt(select.value);
+            if (isNaN(exId)) return;
+
+            addSetToEditList(exId);
+        }
+
+        function cancelWorkoutSessionEdits() {
+            isEditingWorkoutSession = false;
+            
+            document.getElementById('detail-modal-date').classList.remove('hidden');
+            document.getElementById('detail-modal-date-input').classList.add('hidden');
+
+            document.getElementById('detail-modal-footer').classList.remove('hidden');
+            document.getElementById('detail-modal-edit-footer').classList.add('hidden');
+
+            showWorkoutDetails(selectedHistorySessionId, selectedHistoryDate);
+        }
+
+        async function saveWorkoutSessionEdits() {
+            const dateInput = document.getElementById('detail-modal-date-input');
+            const newDate = dateInput ? dateInput.value.trim() : '';
+
+            if (!newDate) {
+                showToast("Выберите корректную дату тренировки", "error");
+                return;
+            }
+
+            for (let i = 0; i < editingSessionLogs.length; i++) {
+                const log = editingSessionLogs[i];
+                if (isNaN(log.weight) || isNaN(log.reps) || log.reps <= 0) {
+                    showToast("Заполните вес и повторения корректно для всех подходов", "error");
+                    return;
+                }
+            }
+
+            const conf = await showConfirm("Сохранить все изменения в этой тренировке?");
+            if (!conf) return;
+
+            if (editingSessionId) {
+                await db.workoutLogs.where('sessionId').equals(editingSessionId).delete();
+            } else if (selectedHistoryDate) {
+                await db.workoutLogs.where('date').equals(selectedHistoryDate).filter(l => !l.sessionId).delete();
+            }
+
+            const sessionToSaveId = editingSessionId || Date.now();
+            const newLogs = editingSessionLogs.map(log => ({
+                date: newDate,
+                exerciseId: log.exerciseId,
+                weight: log.weight,
+                reps: log.reps,
+                sessionId: sessionToSaveId
+            }));
+
+            if (newLogs.length > 0) {
+                await db.workoutLogs.bulkAdd(newLogs);
+            }
+
+            showToast("Тренировка успешно сохранена!", "success");
+
+            isEditingWorkoutSession = false;
+            closeWorkoutDetails();
+
+            await loadWorkoutHistory();
+            await updateStatistics();
+            await loadTodayLogs();
+            buildActiveSessionUI();
         }
 
         async function showMuscleDrilldown(muscleKey) {
@@ -1884,21 +2258,23 @@
                 return `
                     <div class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
                         <div onclick="toggleExerciseHistory(${item.id})" class="px-3 py-2.5 flex justify-between items-center text-xs cursor-pointer hover:bg-zinc-800 transition">
-                            <div class="space-y-0.5">
-                                <span class="font-semibold text-zinc-200 block text-xs flex items-center gap-1.5">
-                                    ${item.name}
-                                    <i data-lucide="line-chart" class="w-3.5 h-3.5 text-zinc-500"></i>
+                            <div class="space-y-0.5 min-w-0 flex-1 pr-2">
+                                <span class="font-semibold text-zinc-200 block text-xs flex items-center gap-1.5 truncate">
+                                    <span class="truncate">${item.name}</span>
+                                    <i data-lucide="line-chart" class="w-3.5 h-3.5 text-zinc-500 flex-shrink-0"></i>
                                 </span>
-                                <span class="text-[10px] text-zinc-400 block font-medium leading-normal">${synergyInfo}</span>
+                                <span class="text-[10px] text-zinc-400 block font-medium leading-normal truncate">${synergyInfo}</span>
                             </div>
-                            <div class="flex items-center gap-2">
-                                ${item.isCustom ? `
-                                    <button onclick="event.stopPropagation(); deleteCustomExercise(${item.id})" class="text-zinc-500 hover:text-red-400 p-1 flex-shrink-0 ml-2">
-                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                    </button>
-                                ` : `
-                                    <span class="text-[9px] text-zinc-600 uppercase font-mono tracking-wider flex-shrink-0 ml-2">Базовое</span>
-                                `}
+                            <div class="flex items-center gap-1 flex-shrink-0">
+                                <button onclick="event.stopPropagation(); editExercise(${item.id})" class="text-zinc-400 hover:text-brand p-1 flex-shrink-0" title="Редактировать">
+                                    <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <button onclick="event.stopPropagation(); deleteExercise(${item.id}, ${item.isCustom})" class="text-zinc-500 hover:text-red-400 p-1 flex-shrink-0" title="Удалить">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                                ${!item.isCustom ? `
+                                    <span class="text-[8px] text-zinc-500 bg-zinc-950 px-1 py-0.5 rounded uppercase font-mono tracking-wider ml-0.5">Баз</span>
+                                ` : ''}
                             </div>
                         </div>
                         <div id="exercise-details-${item.id}" class="hidden bg-zinc-950/50 border-t border-zinc-850 px-3 py-3 space-y-2 transition-all">
@@ -2016,9 +2392,17 @@
             }, 50);
         }
 
-        async function deleteCustomExercise(id) {
-            const confirm = await showConfirm("Вы действительно хотите удалить это упражнение из библиотеки?");
+        async function deleteExercise(id, isCustom) {
+            let msg = "Вы действительно хотите удалить это упражнение из библиотеки?";
+            if (!isCustom) {
+                msg = "Внимание! Это базовое упражнение. Вы действительно хотите удалить его из библиотеки?";
+            }
+            const confirm = await showConfirm(msg);
             if (!confirm) return;
+
+            if (editingExerciseId === id) {
+                cancelEditExercise();
+            }
 
             await db.exercises.delete(id);
             showToast('Упражнение удалено из вашей библиотеки', 'info');
