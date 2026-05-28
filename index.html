@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AnatomyFit — Прогрессия и Программы</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            DEFAULT: '#10b981', // Изумрудный акцент
+                            dark: '#059669',
+                            bg: '#09090b',
+                            card: '#18181b'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Подключаем библиотеки -->
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Настройка PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#09090b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon"
+        href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%2310b981'><rect width='100' height='100' rx='20'/><path d='M30 40 h10 v20 h-10 z M60 40 h10 v20 h-10 z M40 45 h20 v10 h-20 z' fill='black'/></svg>">
+
+    <style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #09090b;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #27272a;
+            border-radius: 2px;
+        }
+
+        /* Анатомическая карта мышц */
+        .muscle-path {
+            fill: #18181b;
+            stroke: #27272a;
+            stroke-width: 1.2px;
+            transition: fill 0.25s cubic-bezier(0.4, 0, 0.2, 1), 
+                        fill-opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1), 
+                        stroke 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                        filter 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+
+        .muscle-path:hover {
+            fill: #3f3f46;
+            stroke: #52525b;
+        }
+
+        /* Премиум слайдеры нагрузок */
+        .muscle-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 9999px;
+            outline: none;
+            transition: background 0.15s ease;
+        }
+
+        .muscle-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 3px solid #09090b;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+            cursor: pointer;
+            transition: transform 0.1s ease, border-color 0.15s;
+        }
+
+        .muscle-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            border-color: #18181b;
+        }
+
+        .muscle-slider::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 3px solid #09090b;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+            cursor: pointer;
+            transition: transform 0.1s ease;
+        }
+
+        .muscle-slider::-moz-range-thumb:hover {
+            transform: scale(1.2);
+        }
+    </style>
+</head>
+
+<body class="bg-brand-bg text-zinc-100 font-sans min-h-screen pb-28 antialiased">
+
+    <!-- ХЕДЕР -->
+    <header class="sticky top-0 z-50 bg-brand-bg/80 backdrop-blur-md border-b border-zinc-800 px-4 py-3">
+        <div class="max-w-md mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <div class="p-1.5 bg-emerald-500/10 rounded-lg text-brand">
+                    <i data-lucide="sparkles" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight">AnatomyFit Pro</h1>
+                    <p class="text-[10px] text-emerald-400 font-medium">Контроль прогрессии нагрузки</p>
+                </div>
+            </div>
+            <!-- Индикатор сессии -->
+            <div id="active-session-indicator"
+                class="hidden px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[10px] font-bold border border-amber-500/20 animate-pulse">
+                Тренировка идет
+            </div>
+        </div>
+    </header>
+
+    <!-- ОСНОВНОЙ КОНТЕНТ -->
+    <main class="max-w-md mx-auto px-4 py-4">
+
+        <!-- ВКЛАДКА 1: АКТИВНАЯ ТРЕНИРОВКА -->
+        <section id="tab-workout" class="space-y-6">
+
+            <!-- Состояние: Тренировка не запущена -->
+            <div id="workout-idle-state" class="space-y-6">
+                <div class="bg-brand-card rounded-2xl p-6 border border-zinc-800 text-center space-y-4">
+                    <div
+                        class="mx-auto w-12 h-12 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
+                        <i data-lucide="play" class="w-6 h-6 text-brand"></i>
+                    </div>
+                    <div class="space-y-1">
+                        <h3 class="font-bold text-zinc-200 text-base">Готовы к тренировке?</h3>
+                        <p class="text-xs text-zinc-400">Выберите программу или начните свободную тренировку, чтобы
+                            отслеживать прогрессию.</p>
+                    </div>
+
+                    <div class="space-y-2 pt-2">
+                        <div>
+                            <label
+                                class="block text-left text-[10px] text-zinc-500 mb-1 uppercase font-bold tracking-wider">Выбрать
+                                программу:</label>
+                            <select id="start-routine-select"
+                                class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand">
+                                <!-- Заполняется динамически -->
+                            </select>
+                        </div>
+                        <button onclick="startWorkoutSession()"
+                            class="w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-200 flex items-center justify-center gap-2">
+                            <i data-lucide="zap" class="w-4 h-4"></i>
+                            Начать тренировку по программе
+                        </button>
+                        <button onclick="startWorkoutSession(true)"
+                            class="w-full bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-semibold py-2.5 rounded-xl border border-zinc-800 transition text-xs">
+                            Свободная тренировка (без программы)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Архив прошлых тренировок -->
+                <div class="space-y-3">
+                    <h3 class="font-bold text-zinc-300 text-sm flex items-center gap-2 px-1">
+                        <i data-lucide="calendar" class="w-4 h-4 text-brand"></i>
+                        История тренировок
+                    </h3>
+                    <div id="workout-history-list" class="space-y-2.5">
+                        <!-- Заполняется динамически -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Состояние: Тренировка запущена -->
+            <div id="workout-active-state" class="space-y-4 hidden">
+                <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex justify-between items-center">
+                    <div>
+                        <span
+                            class="text-[9px] text-amber-400 uppercase font-extrabold tracking-widest block font-medium">Текущая
+                            сессия</span>
+                        <h3 class="font-bold text-sm text-zinc-100" id="active-program-title">Свободная тренировка</h3>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="cancelWorkoutSession()"
+                            class="bg-zinc-850 hover:bg-zinc-800 text-zinc-400 border border-zinc-700/50 hover:border-zinc-700 px-2.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                            Отмена
+                        </button>
+                        <button onclick="finishWorkoutSession()"
+                            class="bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 px-2.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1">
+                            <i data-lucide="square" class="w-3.5 h-3.5"></i>
+                            Завершить
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Быстрый выбор упражнения из запущенной программы -->
+                <div class="bg-brand-card rounded-2xl p-4 border border-zinc-800 space-y-3">
+                    <label class="block text-xs font-semibold text-zinc-400">Выберите упражнение для выполнения:</label>
+                    <div id="active-session-exercises-list" class="flex flex-wrap gap-2">
+                        <!-- Заполняется кнопками упражнений -->
+                    </div>
+                </div>
+
+                <!-- ТАЙМЕР ОТДЫХА -->
+                <div id="rest-timer-card"
+                    class="bg-brand-card rounded-2xl p-4 border border-zinc-800 flex items-center justify-between gap-4 hidden">
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-brand">
+                            <i data-lucide="timer" class="w-5 h-5" id="timer-icon"></i>
+                        </div>
+                        <div>
+                            <span
+                                class="text-[9px] text-zinc-500 uppercase font-extrabold tracking-widest block font-medium">Время
+                                отдыха</span>
+                            <span class="text-xl font-mono font-bold text-zinc-100" id="timer-display">01:30</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <button onclick="adjustTimer(-30)"
+                            class="px-2 py-1.5 bg-zinc-900 border border-zinc-800 text-[10px] rounded-lg text-zinc-400 hover:text-zinc-200 transition font-mono">-30с</button>
+                        <button onclick="adjustTimer(30)"
+                            class="px-2 py-1.5 bg-zinc-900 border border-zinc-800 text-[10px] rounded-lg text-zinc-400 hover:text-zinc-200 transition font-mono">+30с</button>
+                        <button onclick="toggleTimer()" id="btn-timer-toggle"
+                            class="px-3 py-1.5 bg-brand/10 text-brand border border-brand/20 text-[10px] font-bold rounded-lg hover:bg-brand/20 transition">Пауза</button>
+                        <button onclick="stopTimer()"
+                            class="px-2 py-1.5 bg-zinc-900 border border-zinc-800 text-[10px] rounded-lg text-zinc-500 hover:text-red-400 transition">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Форма записи подхода с СОВЕТНИКОМ ПРОГРЕССИИ -->
+                <div class="bg-brand-card rounded-2xl p-5 border border-zinc-800 shadow-xl space-y-4">
+                    <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
+                        <h2 class="font-bold flex items-center gap-2 text-zinc-200 text-sm">
+                            <i data-lucide="plus-circle" class="w-5 h-5 text-brand"></i>
+                            Записать подход
+                        </h2>
+                        <span class="text-xs font-mono text-zinc-400" id="current-workout-exercise-group">--</span>
+                    </div>
+
+                    <!-- Выбор активного упражнения -->
+                    <div>
+                        <select id="active-exercise-select" onchange="onActiveExerciseChange()"
+                            class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-brand">
+                            <!-- Все упражнения для свободного выбора/смены -->
+                        </select>
+                    </div>
+
+                    <!-- УМНЫЙ СОВЕТНИК ПРОГРЕССИИ -->
+                    <div id="progression-advisor-card"
+                        class="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span
+                                class="text-[9px] uppercase tracking-wider font-bold text-brand flex items-center gap-1">
+                                <i data-lucide="sparkles" class="w-3 h-3 text-brand"></i>
+                                Анализатор прогрессии AnatomyFit
+                            </span>
+                            <span id="advisor-prev-best" class="text-[10px] text-zinc-500 font-mono"></span>
+                        </div>
+                        <p id="progression-advice-text" class="text-xs text-zinc-300 leading-relaxed font-medium">
+                            Загрузка истории упражнения...
+                        </p>
+                    </div>
+
+                    <!-- Поля веса и повторений -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-zinc-400 mb-1">Вес (кг)</label>
+                            <div class="relative">
+                                <input type="number" id="input-weight" placeholder="0" step="0.5" min="-100"
+                                    class="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-10 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand font-mono">
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">кг</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-zinc-400 mb-1">Повторения</label>
+                            <div class="relative">
+                                <input type="number" id="input-reps" placeholder="0" min="0"
+                                    class="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-10 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand font-mono">
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">раз</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Помощники быстрой корректировки -->
+                    <div class="flex gap-2 justify-between py-1">
+                        <div class="flex gap-1.5">
+                            <button onclick="adjustValue('input-weight', -2.5)"
+                                class="px-2.5 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 font-mono">-2.5</button>
+                            <button onclick="adjustValue('input-weight', 2.5)"
+                                class="px-2.5 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 font-mono">+2.5</button>
+                        </div>
+                        <div class="flex gap-1.5">
+                            <button onclick="adjustValue('input-reps', -1)"
+                                class="px-2.5 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 font-mono">-1</button>
+                            <button onclick="adjustValue('input-reps', 1)"
+                                class="px-2.5 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 font-mono">+1</button>
+                        </div>
+                    </div>
+
+                    <button onclick="saveActiveSet()"
+                        class="w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-200 flex items-center justify-center gap-2 mt-2">
+                        <i data-lucide="check" class="w-5 h-5"></i>
+                        Записать подход
+                    </button>
+                </div>
+
+                <!-- Подходы за сегодня в этой тренировке -->
+                <div class="space-y-3">
+                    <h3 class="font-bold text-zinc-300 text-sm flex items-center gap-2">
+                        <i data-lucide="history" class="w-4 h-4 text-brand"></i>
+                        Подходы, выполненные за эту тренировку
+                    </h3>
+                    <div id="today-logs-container" class="space-y-2">
+                        <!-- Заполняется динамически -->
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- ВКЛАДКА 2: КОНСТРУКТОР ПРОГРАММ -->
+        <section id="tab-programs" class="space-y-6 hidden">
+            <!-- Создание программы -->
+            <div class="bg-brand-card rounded-2xl p-5 border border-zinc-800 space-y-4">
+                <h3 id="program-form-title" class="font-bold text-zinc-200 flex items-center gap-2">
+                    <i data-lucide="folder-plus" class="w-5 h-5 text-brand"></i>
+                    Новая программа тренировок
+                </h3>
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1">Название программы</label>
+                        <input type="text" id="program-name-input" placeholder="Например: Сплит День А (Грудь/Спина)"
+                            class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand">
+                    </div>
+
+                    <!-- Выбор упражнений для включения в программу -->
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-2 font-medium">Выберите упражнения (кликните, чтобы
+                            добавить):</label>
+                        <div id="program-exercise-selector-pool"
+                            class="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto p-2 bg-zinc-950 rounded-xl border border-zinc-900">
+                            <!-- Заполняется динамически -->
+                        </div>
+                    </div>
+
+                    <!-- Список выбранных упражнений -->
+                    <div class="space-y-1">
+                        <span class="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Выбранный состав
+                            программы:</span>
+                        <div id="selected-exercises-preview"
+                            class="text-xs text-zinc-400 italic bg-zinc-900/50 p-2.5 rounded-lg min-h-8">
+                            Упражнения не выбраны. Кликните по упражнениям выше.
+                        </div>
+                    </div>
+
+                    <button onclick="createNewProgram()" id="program-save-btn"
+                        class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold py-2.5 rounded-xl transition text-sm">
+                        Сохранить программу
+                    </button>
+                    <button onclick="cancelEditRoutine()" id="program-cancel-btn"
+                        class="w-full bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 font-semibold py-2.5 rounded-xl transition text-sm hidden">
+                        Отменить редактирование
+                    </button>
+                </div>
+            </div>
+
+            <!-- Список текущих программ -->
+            <div class="space-y-3">
+                <h3 class="font-bold text-zinc-300 flex items-center gap-2">
+                    <i data-lucide="book-open" class="w-4 h-4 text-brand"></i>
+                    Твои программы тренировок
+                </h3>
+                <div id="programs-list-container" class="space-y-3">
+                    <!-- Заполняется динамически -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ВКЛАДКА 3: АНАТОМИЧЕСКАЯ АНАЛИТИКА -->
+        <section id="tab-stats" class="space-y-6 hidden">
+            <!-- Переключатель режима статистики -->
+            <div class="bg-zinc-900 p-1 rounded-xl border border-zinc-800 flex">
+                <button id="btn-mode-sets" onclick="setStatsMode('sets')"
+                    class="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-black bg-brand">
+                    Подходы (7 дней)
+                </button>
+                <button id="btn-mode-tonnage" onclick="setStatsMode('tonnage')"
+                    class="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-zinc-400">
+                    Тоннаж (Общий кг)
+                </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div class="bg-brand-card p-4 rounded-xl border border-zinc-800">
+                    <span class="text-xs text-zinc-400 block" id="stats-card-left-title">Подходы за последние 7
+                        дней</span>
+                    <span class="text-xl font-mono font-bold text-brand" id="stats-card-left-val">0</span>
+                </div>
+                <div class="bg-brand-card p-4 rounded-xl border border-zinc-800">
+                    <span class="text-xs text-zinc-400 block" id="stats-card-right-title">Подходы за предыдущие 7
+                        дней</span>
+                    <span class="text-xl font-mono font-bold text-brand" id="stats-card-right-val">0</span>
+                </div>
+            </div>
+
+            <!-- Распределение нагрузки -->
+            <div class="bg-brand-card p-5 rounded-2xl border border-zinc-800 space-y-4">
+                <div>
+                    <h3 class="font-bold text-zinc-200" id="stats-chart-title">Анатомический объем нагрузки</h3>
+                    <p class="text-xs text-zinc-400 leading-relaxed" id="stats-chart-desc">Распределение подходов по
+                        детальным группам мышц с учетом синергии и нормы за последние 7 дней.</p>
+                </div>
+
+                <div id="muscle-progress-bars" class="space-y-3 pt-2 border-b border-zinc-800/50 pb-4">
+                    <!-- Рендерится динамически -->
+                </div>
+
+                <div class="pt-2">
+                    <h4 class="text-xs font-semibold text-zinc-400 mb-2">Общая диаграмма синергии</h4>
+                    <div class="relative w-full h-80 flex items-center justify-center">
+                        <canvas id="muscleChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Хронология тренировок -->
+            <div class="bg-brand-card p-5 rounded-2xl border border-zinc-800 space-y-4">
+                <div>
+                    <h3 class="font-bold text-zinc-200" id="history-chart-title">История по дням</h3>
+                    <p class="text-xs text-zinc-400" id="history-chart-desc">Суммарный накопленный объем нагрузок</p>
+                </div>
+                <div class="relative w-full h-48 flex items-center justify-center">
+                    <canvas id="historyChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- ВКЛАДКА 4: БАЗА УПРАЖНЕНИЙ С СИНЕРГИЕЙ -->
+        <section id="tab-exercises" class="space-y-6 hidden">
+            <!-- Конструктор кастомного упражнения -->
+            <div class="bg-brand-card rounded-2xl p-5 border border-zinc-800 space-y-4">
+                <h3 id="custom-exercise-form-title" class="font-bold text-zinc-200 flex items-center gap-2">
+                    <i data-lucide="fingerprint" class="w-5 h-5 text-brand"></i>
+                    Ана                            <!-- Единый интерактивный SVG силуэт (Спереди / Сзади) -->
+                            <div class="w-full flex justify-center py-2">
+                                <svg id="muscle-map-svg" width="180" height="290" viewBox="0 0 88 207" xmlns="http://www.w3.org/2000/svg" class="select-none">
+                                    <defs>
+                                        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                                            <feGaussianBlur stdDeviation="1.5" result="blur" />
+                                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                        </filter>
+                                    </defs>
+                                    
+                                    <!-- Вид Спереди (x от 0 до 88) -->
+                                    <g id="body-front-group">
+                                        <!-- Контур тела спереди -->
+                                        <path id="Front" fill="#18181b" stroke="#27272a" stroke-width="0.8" d="M44.055,118.158c-0.3,3.531 3.185,22.306 4.422,29.636c0.589,3.472 2.204,9.13 1.623,12.134c-0.83,4.187 -1.07,9.604 -0.613,12.759c0.288,1.916 1.195,10.752 -0.103,13.984c-0.678,1.695 -1.922,10.38 -1.922,10.38c-3.241,8.182 -1.412,7.779 -1.412,7.779c1.003,1.231 2.722,0.097 2.722,0.097c1.309,0.834 2.215,-0.198 2.215,-0.198c1.124,0.93 2.434,-0.115 2.434,-0.115c1.412,0.733 2.721,-0.618 2.721,-0.618c0.811,0.408 1.009,-0.108 1.009,-0.108c2.433,-0.156 -1.357,-7.941 -1.357,-7.941c-0.908,-6.993 0.9,-10.884 0.9,-10.884c5.923,-17.565 6.224,-22.226 3.856,-28.845c-0.666,-1.911 -0.835,-2.668 -0.528,-3.497c0.709,-1.915 0.192,-9.617 1.057,-12.675c1.669,-5.898 3.316,-20.856 4.174,-27.836c1.153,-9.401 -4.085,-22.007 -4.085,-22.007c-1.147,-5.129 0.535,-23.406 0.535,-23.406c2.349,3.655 2.259,10.107 2.259,10.107c-0.373,6.766 5.466,17.107 5.466,17.107c2.806,4.274 3.868,8.328 3.868,8.629c0,1.231 -0.269,4.212 -0.269,4.212l0.107,2.595c0.049,0.661 0.42,2.937 0.36,4.037c-0.438,6.769 0.638,5.495 0.638,5.495c0.907,0 1.904,-5.447 1.904,-5.447c0,1.405 -0.343,5.61 0.415,7.197c0.906,1.892 1.573,-0.325 1.585,-0.77c0.24,-8.619 0.758,-6.361 0.758,-6.361c0.504,6.992 1.123,8.572 2.234,8.025c0.842,-0.401 0.072,-8.391 0.072,-8.391c1.441,4.746 2.534,5.502 2.534,5.502c2.379,1.67 0.908,-2.943 0.577,-3.856c-1.76,-4.854 -1.815,-6.536 -1.815,-6.536c2.199,4.361 3.857,4.2 3.857,4.2c2.144,-0.685 -1.875,-6.86 -4.23,-9.819c-1.201,-1.507 -2.751,-3.526 -3.201,-4.724c-0.733,-2.03 -1.286,-8.557 -1.286,-8.557c-0.222,-7.702 -2.126,-11.047 -2.126,-11.047c-3.255,-5.211 -3.868,-14.93 -3.868,-14.93l-0.144,-16.411c-1.141,-11.194 -9.389,-11.274 -9.389,-11.274c-8.337,-1.241 -9.497,-3.935 -9.497,-3.935c-1.766,-2.541 -0.757,-7.412 -0.757,-7.412c1.465,-1.192 2.03,-4.355 2.03,-4.355c2.433,-1.866 2.313,-4.596 1.19,-4.566c-0.902,0.024 -0.698,-0.723 -0.698,-0.723c1.522,-12.288 -9.387,-12.915 -9.387,-12.915l-1.665,0c0,0 -10.914,0.627 -9.395,12.912c0,0 0.204,0.748 -0.705,0.723c-1.121,-0.03 -1.225,2.7 1.199,4.566c0,0 0.564,3.162 2.03,4.355c0,0 1.009,4.871 -0.757,7.412c0,0 -1.156,2.694 -9.497,3.935c0,0 -8.262,0.08 -9.385,11.274l-0.156,16.411c0,0 -0.601,9.719 -3.869,14.93c0,0 -1.895,3.346 -2.114,11.047c0,0 -0.556,6.527 -1.286,8.557c-0.445,1.192 -1.993,3.211 -3.205,4.724c-2.375,2.953 -6.368,9.115 -4.232,9.819c0,0 1.666,0.161 3.856,-4.2c0,0 -0.045,1.67 -1.802,6.536c-0.345,0.901 -1.814,5.514 0.565,3.856c0,0 1.102,-0.757 2.535,-5.502c0,0 -0.769,7.99 0.086,8.391c1.118,0.548 1.728,-1.033 2.232,-8.025c0,0 0.517,-2.258 0.756,6.361c0.012,0.445 0.664,2.662 1.575,0.77c0.768,-1.587 0.423,-5.785 0.423,-7.197c0,0 0.986,5.448 1.907,5.448c0,0 1.084,1.273 0.639,-5.496c-0.072,-1.106 0.316,-3.376 0.364,-4.037l0.105,-2.595c0,0 -0.271,-2.974 -0.271,-4.212c0,-0.307 1.064,-4.355 3.869,-8.629c0,0 5.833,-10.346 5.457,-17.107c0,0 -0.081,-6.452 2.268,-10.107c0,0 1.667,18.276 0.537,23.406c0,0 -5.247,12.606 -4.09,22.007c0.853,6.998 2.496,21.937 4.169,27.836c0.874,3.052 0.357,10.752 1.058,12.675c0.316,0.835 0.15,1.605 -0.529,3.497c-2.355,6.619 -2.055,11.281 3.868,28.845c0,0 1.823,3.892 0.902,10.884c0,0 -3.784,7.785 -1.361,7.941c0,0 0.19,0.516 1.01,0.108c0,0 1.309,1.351 2.723,0.618c0,0 1.31,1.046 2.43,0.115c0,0 0.898,1.032 2.207,0.198c0,0 1.718,1.159 2.739,-0.097c0,0 1.814,0.403 -1.415,-7.779c0,0 -1.237,-8.675 -1.919,-10.38c-1.3,-3.231 -0.382,-12.086 -0.105,-13.984c0.447,-3.172 0.208,-8.577 -0.609,-12.759c-0.598,-2.997 1.021,-8.656 1.619,-12.134c1.228,-7.323 4.403,-29.633 4.403,-29.633Z"/>
+
+                                        <!-- Мышцы спереди -->
+                                        <!-- Грудь -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="chest" onclick="window.selectMuscleOnMap('chest')">
+                                            <path d="M42.057,40.112c-0.311,3.984 2.007,8.955 2.037,11.938c0.04,4.039 -0.33,7.303 -7.463,8.098c-5.733,0.638 -7.022,-1.737 -8.88,-2.919c-1.159,-0.738 -1.515,-8.373 -2.573,-9.527c-0.723,-0.788 3.991,-8.909 10.523,-8.851c6.532,0.057 6.421,0.425 6.356,1.261Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M46.136,40.112c0.311,3.984 -2.008,8.955 -2.037,11.938c-0.04,4.039 0.329,7.303 7.463,8.098c5.733,0.638 7.022,-1.737 8.879,-2.919c1.16,-0.738 1.515,-8.373 2.574,-9.527c0.723,-0.788 -3.991,-8.909 -10.523,-8.851c-6.533,0.057 -6.422,0.425 -6.356,1.261Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                        <!-- Пресс -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="abs" onclick="window.selectMuscleOnMap('abs')">
+                                            <path d="M44.343,60.277c0,0 -5.885,-1.868 -8.56,1.474c-2.675,3.341 0.465,16.298 -0.248,21.113c-0.713,4.815 3.292,24.8 5.331,25.563c1.267,0.475 2.143,0.569 3.567,-0.089c1.256,-0.58 7.126,-13.883 7.896,-25.594c0.356,-5.416 4.855,-21.729 -2.992,-22.913c-4.539,-0.685 -4.994,0.446 -4.994,0.446Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M36.007,62.836c0,0 1.395,31.809 0,32.945c-1.394,1.136 -1.678,-6.343 -6.79,-7.195c-0.953,-0.159 -0.163,-17.23 -2.449,-21.3c-2.285,-4.071 8.267,-5.775 9.239,-4.45Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M51.917,62.836c0,0 -1.395,31.809 0,32.945c1.394,1.136 1.678,-6.343 6.79,-7.195c0.953,-0.159 0.163,-17.23 2.449,-21.3c2.285,-4.071 -8.267,-5.775 -9.239,-4.45Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                        <!-- Бицепсы -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="biceps" onclick="window.selectMuscleOnMap('biceps')">
+                                            <path d="M25.232,48.934c0,0 1.105,16.785 -0.186,17.535c-1.481,0.86 -2.239,9.14 -2.239,9.14c0,0 -0.746,-2.099 -1.585,-2.005c-0.84,0.093 -2.425,1.679 -2.752,2.238c-0.326,0.56 -5.223,-17.301 6.762,-26.908Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M63.528,51.098c0,0 -1.105,16.784 0.187,17.534c1.481,0.861 2.238,9.141 2.238,9.141c0,0 0.746,-2.099 1.586,-2.005c0.839,0.093 2.425,1.678 2.751,2.238c0.327,0.56 5.223,-17.302 -6.762,-26.908Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                        <!-- Квадрицепсы -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="quads" onclick="window.selectMuscleOnMap('quads')">
+                                            <path d="M31.536,95.898c0,0 11.073,23.633 10.268,34.698c-0.805,11.065 -2.012,14.887 -2.012,17.704c0,2.816 0.361,-4.209 -3.165,-4.225c-4.132,-0.019 -7.219,3.332 -8.338,7.023c-0.159,0.527 -0.999,-10.497 -0.999,-10.497c0,0 -1.416,-3.038 -2.386,-13.241c-1.468,-15.448 10.299,-21.015 6.632,-31.462" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M56.329,95.898c0,0 -11.073,23.633 -10.268,34.698c0.804,11.065 2.012,14.887 2.012,17.704c0,2.816 -0.361,-4.209 3.165,-4.225c4.131,-0.019 7.219,3.332 8.337,7.023c0.16,0.527 0.999,-10.497 0.999,-10.497c0,0 1.417,-3.038 2.387,-13.241c1.468,-15.448 -10.299,-21.015 -6.632,-31.462" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M34.684,93.947c0,0 4.231,11.716 5.884,14.86c2.454,4.668 3.854,8.447 3.487,9.049c-0.368,0.602 -1.254,9.8 -1.32,8.966c-0.474,-6.017 -7.45,-29.324 -8.592,-30.924c-0.63,-0.882 0.537,-1.957 0.541,-1.951Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M53.036,93.947c0,0 -4.231,11.716 -5.884,14.86c-2.454,4.668 -3.854,8.447 -3.487,9.049c0.368,0.602 1.254,9.8 1.32,8.966c0.474,-6.017 7.45,-29.324 8.592,-30.924c0.63,-0.882 -0.537,-1.957 -0.541,-1.951Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                        <!-- Дельты спереди -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="delts" onclick="window.selectMuscleOnMap('delts')">
+                                            <path d="M35.684,38.139c0,0 -12.432,-7.085 -17.512,3.476c-1.869,3.885 -0.459,16.146 -0.401,16.71c0.038,0.373 3.69,-7.88 6.817,-9.625c0.537,-0.299 -0.144,-8.31 11.096,-10.561Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M52.463,38.139c0,0 12.432,-7.085 17.512,3.476c1.869,3.885 0.459,16.146 0.401,16.71c-0.038,0.373 -3.69,-7.88 -6.818,-9.625c-0.536,-0.299 0.145,-8.31 -11.095,-10.561Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                    </g>
+                                    
+                                    <!-- Вид Сзади (x от 88 до 176) -->
+                                    <g id="body-back-group">
+                                        <!-- Контур тела сзади -->
+                                        <path id="Back" fill="#18181b" stroke="#27272a" stroke-width="0.8" d="M130.969,118.158c-0.3,3.531 3.184,22.306 4.422,29.636c0.588,3.472 2.203,9.13 1.622,12.134c-0.829,4.187 -1.069,9.604 -0.612,12.759c0.288,1.916 1.194,10.752 -0.103,13.984c-0.679,1.695 -1.923,10.38 -1.923,10.38c-3.24,8.182 -1.411,7.779 -1.411,7.779c1.003,1.231 2.721,0.097 2.721,0.097c1.31,0.834 2.216,-0.198 2.216,-0.198c1.124,0.93 2.434,-0.115 2.434,-0.115c1.411,0.733 2.721,-0.618 2.721,-0.618c0.81,0.408 1.009,-0.108 1.009,-0.108c2.432,-0.156 -1.358,-7.941 -1.358,-7.941c-0.907,-6.993 0.901,-10.884 0.901,-10.884c5.923,-17.565 6.224,-22.226 3.856,-28.845c-0.667,-1.911 -0.835,-2.668 -0.529,-3.497c0.71,-1.915 0.193,-9.617 1.058,-12.675c1.669,-5.898 3.316,-20.856 4.174,-27.836c1.153,-9.401 -4.085,-22.007 -4.085,-22.007c-1.148,-5.129 0.534,-23.406 0.534,-23.406c2.349,3.655 2.26,10.107 2.26,10.107c-0.373,6.766 5.466,17.107 5.466,17.107c2.805,4.274 3.868,8.328 3.868,8.629c0,1.231 -0.27,4.212 -0.27,4.212l0.108,2.595c0.048,0.661 0.42,2.937 0.36,4.037c-0.438,6.769 0.637,5.495 0.637,5.495c0.908,0 1.905,-5.447 1.905,-5.447c0,1.405 -0.343,5.61 0.415,7.197c0.906,1.892 1.573,-0.325 1.585,-0.77c0.24,-8.619 0.757,-6.361 0.757,-6.361c0.505,6.992 1.124,8.572 2.235,8.025c0.841,-0.401 0.072,-8.391 0.072,-8.391c1.441,4.746 2.534,5.502 2.534,5.502c2.379,1.67 0.908,-2.943 0.577,-3.856c-1.76,-4.854 -1.814,-6.536 -1.814,-6.536c2.199,4.361 3.856,4.2 3.856,4.2c2.145,-0.685 -1.874,-6.86 -4.229,-9.819c-1.201,-1.507 -2.751,-3.526 -3.201,-4.724c-0.733,-2.03 -1.286,-8.557 -1.286,-8.557c-0.222,-7.702 -2.126,-11.047 -2.126,-11.047c-3.256,-5.211 -3.868,-14.93 -3.868,-14.93l-0.144,-16.411c-1.142,-11.194 -9.39,-11.274 -9.39,-11.274c-8.337,-1.241 -9.497,-3.935 -9.497,-3.935c-1.766,-2.541 -0.756,-7.412 -0.756,-7.412c1.465,-1.192 2.03,-4.355 2.03,-4.355c2.433,-1.866 2.313,-4.596 1.19,-4.566c-0.902,0.024 -0.698,-0.723 -0.698,-0.723c1.521,-12.288 -9.387,-12.915 -9.387,-12.915l-1.666,0c0,0 -10.913,0.627 -9.394,12.912c0,0 0.204,0.748 -0.705,0.723c-1.121,-0.03 -1.226,2.7 1.198,4.566c0,0 0.565,3.162 2.03,4.355c0,0 1.01,4.871 -0.756,7.412c0,0 -1.156,2.694 -9.497,3.935c0,0 -8.262,0.08 -9.386,11.274l-0.156,16.411c0,0 -0.6,9.719 -3.869,14.93c0,0 -1.895,3.346 -2.114,11.047c0,0 -0.555,6.527 -1.285,8.557c-0.445,1.192 -1.994,3.211 -3.205,4.724c-2.376,2.953 -6.368,9.115 -4.232,9.819c0,0 1.666,0.161 3.856,-4.2c0,0 -0.045,1.67 -1.802,6.536c-0.346,0.901 -1.814,5.514 0.565,3.856c0,0 1.102,-0.757 2.534,-5.502c0,0 -0.768,7.99 0.087,8.391c1.118,0.548 1.727,-1.033 2.232,-8.025c0,0 0.516,-2.258 0.756,6.361c0.012,0.445 0.664,2.662 1.575,0.77c0.768,-1.587 0.423,-5.785 0.423,-7.197c0,0 0.985,5.448 1.907,5.448c0,0 1.084,1.273 0.639,-5.496c-0.072,-1.106 0.316,-3.376 0.364,-4.037l0.105,-2.595c0,0 -0.271,-2.974 -0.271,-4.212c0,-0.307 1.064,-4.355 3.868,-8.629c0,0 5.833,-10.346 5.458,-17.107c0,0 -0.081,-6.452 2.268,-10.107c0,0 1.667,18.276 0.537,23.406c0,0 -5.247,12.606 -4.09,22.007c0.852,6.998 2.496,21.937 4.169,27.836c0.874,3.052 0.357,10.752 1.058,12.675c0.315,0.835 0.15,1.605 -0.529,3.497c-2.355,6.619 -2.055,11.281 3.868,28.845c0,0 1.823,3.892 0.902,10.884c0,0 -3.785,7.785 -1.361,7.941c0,0 0.19,0.516 1.009,0.108c0,0 1.309,1.351 2.724,0.618c0,0 1.31,1.046 2.43,0.115c0,0 0.898,1.032 2.207,0.198c0,0 1.718,1.159 2.739,-0.097c0,0 1.814,0.403 -1.416,-7.779c0,0 -1.237,-8.675 -1.918,-10.38c-1.3,-3.231 -0.382,-12.086 -0.105,-13.984c0.447,-3.172 0.207,-8.577 -0.609,-12.759c-0.598,-2.997 1.021,-8.656 1.618,-12.134c1.229,-7.323 4.404,-29.633 4.404,-29.633Z"/>
+
+                                        <!-- Мышцы сзади -->
+                                        <!-- Трапеции -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="traps" onclick="window.selectMuscleOnMap('traps')">
+                                            <path d="M129.543,76.453c0.075,0.385 0.737,-2.948 1.567,-2.58c0.829,0.369 1.852,2.584 1.842,2.488c-0.26,-2.728 2.184,-6.972 3.963,-9.859c1.932,-3.136 2.94,-3.318 4.238,-7.371c0.517,-1.615 0,-12.163 2.211,-16.033c2.212,-3.869 3.778,-3.473 5.437,-4.422c0.362,-0.207 -13.577,-1.309 -14.779,-10.719c-0.198,-1.556 -0.211,-2.973 0.036,-4.392c0.247,-1.42 -7.247,-1.995 -7.647,-0.092c-0.612,2.906 4.562,11.205 -13.084,13.913c-1.239,0.19 3.655,2.08 6.357,6.173c0.659,0.998 0.647,3.367 2.672,16.678c0.453,2.976 6.322,11.786 7.187,16.216Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path transform="translate(264, 0) scale(-1, 1)" d="M129.543,76.453c0.075,0.385 0.737,-2.948 1.567,-2.58c0.829,0.369 1.852,2.584 1.842,2.488c-0.26,-2.728 2.184,-6.972 3.963,-9.859c1.932,-3.136 2.94,-3.318 4.238,-7.371c0.517,-1.615 0,-12.163 2.211,-16.033c2.212,-3.869 3.778,-3.473 5.437,-4.422c0.362,-0.207 -13.577,-1.309 -14.779,-10.719c-0.198,-1.556 -0.211,-2.973 0.036,-4.392c0.247,-1.42 -7.247,-1.995 -7.647,-0.092c-0.612,2.906 4.562,11.205 -13.084,13.913c-1.239,0.19 3.655,2.08 6.357,6.173c0.659,0.998 0.647,3.367 2.672,16.678c0.453,2.976 6.322,11.786 7.187,16.216Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                        <!-- Широчайшие -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="lats" onclick="window.selectMuscleOnMap('lats')">
+                                            <path d="M134.34,75.599c0,0 5.048,5.158 5.597,8.231c0.549,3.073 0.557,8.648 3.183,8.231c0.035,-0.005 -0.895,-2.038 0.325,-4.136c4.193,-7.206 4.394,-15.619 4.394,-15.619l1.427,-13.718c0,0 -3.915,1.393 -7.024,-0.659c-0.623,-0.411 -0.256,4.772 -3.251,7.473c-1.226,1.105 -5.858,7.124 -4.651,10.197Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M127.775,75.599c0,0 -5.049,5.158 -5.597,8.231c-0.549,3.073 -0.557,8.648 -3.183,8.231c-0.035,-0.005 0.895,-2.038 -0.326,-4.136c-4.192,-7.206 -4.393,-15.619 -4.393,-15.619l-1.427,-13.718c0,0 3.915,1.393 7.024,-0.659c0.623,-0.411 0.255,4.772 3.251,7.473c1.226,1.105 5.858,7.124 4.651,10.197Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                        <!-- Трицепсы -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="triceps" onclick="window.selectMuscleOnMap('triceps')">
+                                            <path d="M149.266,49.372c0,0 3.715,-2.597 5.023,-1.85c1.309,0.748 3.739,5.515 4.02,7.478c0.28,1.963 1.495,17.573 1.495,17.573c0,0 -0.467,1.945 -1.776,2.422c-1.308,0.476 -1.121,-4.059 -2.113,-4.555c-0.991,-0.496 -0.045,3.516 -1.037,3.832c-0.991,0.315 -3.876,-1.082 -3.876,-1.082l-2.194,-6.446c0,0 2.058,-13.917 0.458,-17.372Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M112.671,49.372c0,0 -3.715,-2.597 -5.023,-1.85c-1.309,0.748 -3.739,5.515 -4.02,7.478c-0.28,1.963 -1.495,17.573 -1.495,17.573c0,0 0.467,1.945 1.776,2.422c1.308,0.476 1.121,-4.059 2.113,-4.555c0.991,-0.496 0.045,3.516 1.036,3.832c0.992,0.315 3.877,-1.082 3.877,-1.082l2.194,-6.446c0,0 -2.058,-13.917 -0.458,-17.372Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                        <!-- Предплечья сзади -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="forearms" onclick="window.selectMuscleOnMap('forearms')">
+                                            <path d="M159.804,73.41c0,0 3.727,5.905 4.477,10.404c0.75,4.499 -0.094,13.404 2.062,15.466c2.156,2.062 -6.235,3.749 -6.539,1.687c-0.303,-2.062 -9.5,-17.601 -8.458,-20.433c0.282,-0.766 -0.281,-7.405 -0.281,-7.405l3.241,1.866c0,0 0.696,2.821 -0.898,3.664c-1.593,0.844 0.938,3.281 1.969,2.25c1.031,-1.031 1.687,-3 2.905,-3.375c1.219,-0.375 -0.937,-2.104 -0.187,-2.504c0.75,-0.401 1.709,-1.62 1.709,-1.62Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M102.444,73.41c0,0 -3.727,5.905 -4.477,10.404c-0.75,4.499 0.094,13.404 -2.062,15.466c-2.156,2.062 6.236,3.749 6.539,1.687c0.303,-2.062 9.5,-17.601 8.458,-20.433c-0.282,-0.766 0.281,-7.405 0.281,-7.405l-3.241,1.866c0,0 -0.696,2.821 0.898,3.664c1.593,0.844 -0.937,3.281 -1.968,2.25c-1.032,-1.031 -1.688,-3 -2.906,-3.375c-1.219,-0.375 0.937,-2.104 0.187,-2.504c-0.749,-0.401 -1.709,-1.62 -1.709,-1.62Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                        <!-- Ягодицы -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="glutes" onclick="window.selectMuscleOnMap('glutes')">
+                                            <path d="M116.292,89.962c0.806,-0.134 13.533,6.223 14.226,16.039c0.693,9.815 -6.928,13.33 -13.359,11.611c-6.43,-1.719 -5.954,-9.396 -5.786,-11.242c0.12,-1.318 1.27,-4.277 2.315,-11.444c0.181,-1.241 1.798,-4.83 2.604,-4.964Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M147.461,91.166c-0.718,-0.286 -13.58,3.525 -15.977,13.028c-2.396,9.503 3.994,14.407 10.225,13.947c6.231,-0.459 7.168,-8.085 7.344,-9.93c0.126,-1.316 -0.403,-4.44 -0.083,-11.675c0.056,-1.253 -0.79,-5.085 -1.509,-5.37Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                        <!-- Задняя поверхность бедра -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="hamstrings" onclick="window.selectMuscleOnMap('hamstrings')">
+                                            <path d="M134.031,118.726c0,0 12.347,0.487 14.305,-1.231c1.959,-1.718 2.481,9.396 0,21.406c-2.48,12.01 -0.916,13.351 -1.279,13.035c-2.739,-2.372 -4.386,-8.297 -4.578,-8.153c-0.152,0.115 -5.704,8.313 -4.791,14.7c0.052,0.368 -5.202,-28.975 -5.985,-32.542c-0.783,-3.567 -1.965,-6.826 2.328,-7.215Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M127.912,118.726c0,0 -12.283,0.487 -14.231,-1.231c-1.947,-1.718 -2.467,9.396 0,21.406c2.468,12.01 0.912,13.351 1.273,13.035c2.725,-2.372 4.363,-8.297 4.554,-8.153c0.152,0.115 5.675,8.313 4.767,14.7c-0.052,0.368 5.175,-28.975 5.954,-32.542c0.778,-3.567 0.171,-7.106 -2.317,-7.215Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                        <!-- Икроножные -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="calves" onclick="window.selectMuscleOnMap('calves')">
+                                            <path d="M142.885,152.39c0,0 -5.718,7.108 -6.096,10.007c-0.378,2.898 -0.387,16.918 0.677,19.353c0.779,1.782 4.588,-3.96 5.545,-7.56c0.956,-3.6 -0.014,3.34 2.394,5.922c0.407,0.436 4.674,-13.753 3.447,-18.453c-1.702,-6.519 -2.344,-8.369 -1.913,-11.391c0.678,-4.752 -2.574,2.122 -3.046,4.264c-0.472,2.142 -1.008,-2.142 -1.008,-2.142Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M119.244,152.39c0,0 5.718,7.108 6.096,10.007c0.378,2.898 0.387,16.918 -0.677,19.353c-0.779,1.782 -4.588,-3.96 -5.545,-7.56c-0.957,-3.6 0.014,3.34 -2.394,5.922c-0.407,0.436 -4.674,-13.753 -3.447,-18.453c1.702,-6.519 2.344,-8.369 1.913,-11.391c-0.678,-4.752 2.574,2.122 3.046,4.264c0.472,2.142 1.008,-2.142 1.008,-2.142Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                        <!-- Разгибатели спины -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="erectors" onclick="window.selectMuscleOnMap('erectors')">
+                                            <path d="M129.5,77 L131.5,77 L130.5,103 L129.5,103 Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M132.5,77 L134.5,77 L133.5,103 L132.5,103 Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                        <!-- Дельты сзади -->
+                                        <g class="muscle-path cursor-pointer" data-muscle="delts" onclick="window.selectMuscleOnMap('delts')" transform="translate(88, 0)">
+                                            <path d="M35.684,38.139c0,0 -12.432,-7.085 -17.512,3.476c-1.869,3.885 -0.459,16.146 -0.401,16.71c0.038,0.373 3.69,-7.88 6.817,-9.625c0.537,-0.299 -0.144,-8.31 11.096,-10.561Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                            <path d="M52.463,38.139c0,0 12.432,-7.085 17.512,3.476c1.869,3.885 0.459,16.146 0.401,16.71c-0.038,0.373 -3.69,-7.88 -6.818,-9.625c-0.536,-0.299 0.145,-8.31 -11.095,-10.561Z" fill="#27272a" stroke="#3f3f46" stroke-width="0.4" style="transition: fill 0.2s, fill-opacity 0.2s;"/>
+                                        </g>
+                                    </g>
+                                </svg>
+                            </div>
+                        </div>
+                        <!-- ПРАВАЯ ПАНЕЛЬ: Слайдеры распределения -->
+                        <div class="md:col-span-7 space-y-4 flex flex-col justify-between">
+                            <div class="space-y-3">
+                                <div class="flex justify-between items-center pb-1.5 border-b border-zinc-800">
+                                    <span class="text-xs font-bold text-zinc-300">Распределение нагрузки</span>
+                                    <span id="custom-exercise-total-load" class="text-xs font-mono font-bold text-yellow-500">Сумма: 0%</span>
+                                </div>
+
+                                <!-- Контейнер слайдеров -->
+                                <div id="custom-exercise-sliders-container" class="space-y-3 max-h-56 overflow-y-auto pr-1">
+                                    <div class="text-center py-8 text-xs text-zinc-500 italic bg-zinc-900/30 rounded-xl border border-zinc-850">
+                                        Кликните на мышцу на схеме слева, чтобы добавить нагрузку.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="space-y-3 pt-3 border-t border-zinc-850">
+                                <!-- Кнопка автораспределения/нормализации -->
+                                <button type="button" id="btn-normalize-loads" onclick="window.normalizeLoads()" class="hidden w-full py-2 bg-zinc-900 border border-zinc-800 hover:border-brand/40 text-zinc-300 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5">
+                                    <i data-lucide="scale" class="w-3.5 h-3.5 text-brand"></i> Нормализовать до 100%
+                                </button>
+
+                                <!-- Чекбокс собственного веса -->
+                                <div class="flex items-center gap-2 px-1">
+                                    <input type="checkbox" id="custom-uses-bodyweight"
+                                        class="w-4 h-4 rounded border-zinc-800 bg-zinc-900 text-brand focus:ring-brand focus:ring-offset-zinc-900">
+                                    <label for="custom-uses-bodyweight"
+                                        class="text-xs text-zinc-400 cursor-pointer select-none">Упражнение со своим весом (подтягивания, отжимания и др.)</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- КНОПКИ ДЕЙСТВИЯ -->
+                    <div class="flex gap-3 pt-2">
+                        <button onclick="createCustomExercise()" id="custom-exercise-save-btn"
+                            class="flex-1 bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-150 text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-brand/10">
+                            <i data-lucide="sparkles" class="w-4 h-4"></i> Сохранить технику
+                        </button>
+                        <button onclick="cancelEditExercise()" id="custom-exercise-cancel-btn"
+                            class="py-3 px-6 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 font-semibold rounded-xl transition text-sm hidden">
+                            Отмена
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Библиотека -->
+            <div class="space-y-3">
+                <h3 class="font-bold text-zinc-300 flex items-center gap-2">
+                    <i data-lucide="library" class="w-4 h-4 text-brand"></i>
+                    Твоя библиотека упражнений
+                </h3>
+
+                <!-- Поиск и фильтры -->
+                <div class="grid grid-cols-2 gap-2 pb-1">
+                    <input type="text" id="exercise-search-input" oninput="loadAllExercisesList()"
+                        placeholder="Поиск..."
+                        class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-brand">
+                    <select id="exercise-filter-muscle" onchange="loadAllExercisesList()"
+                        class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-brand">
+                        <option value="">Все мышцы</option>
+                    </select>
+                </div>
+
+                <div id="exercise-list-container" class="space-y-2 max-h-96 overflow-y-auto pr-1">
+                    <!-- Заполняется динамически -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ВКЛАДКА 5: НАСТРОЙКИ -->
+        <section id="tab-settings" class="space-y-6 hidden">
+            <div class="bg-brand-card rounded-2xl p-5 border border-zinc-800 space-y-4">
+                <h3 class="font-bold text-zinc-200">Локальная СУБД (Dexie)</h3>
+                <p class="text-xs text-zinc-400">Все расчеты нагрузок и шаблонов проходят локально на чипе вашего
+                    смартфона. Без отправки на внешние сервера.</p>
+
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <button onclick="exportData()"
+                        class="flex flex-col items-center justify-center p-4 bg-zinc-900 border border-zinc-800 hover:border-brand/40 rounded-xl gap-2 text-zinc-300 transition duration-150">
+                        <i data-lucide="download" class="w-6 h-6 text-brand"></i>
+                        <span class="text-xs">Резервная копия</span>
+                    </button>
+                    <label
+                        class="flex flex-col items-center justify-center p-4 bg-zinc-900 border border-zinc-800 hover:border-brand/40 rounded-xl gap-2 text-zinc-300 cursor-pointer transition duration-150">
+                        <i data-lucide="upload" class="w-6 h-6 text-sky-400"></i>
+                        <span class="text-xs">Импортировать</span>
+                        <input type="file" id="import-file" class="hidden" onchange="importData(event)">
+                    </label>
+                </div>
+                <div class="border-t border-zinc-800 pt-4 space-y-3">
+                    <h4 class="text-xs font-semibold text-zinc-300">Данные пользователя</h4>
+                    <div class="space-y-2">
+                        <label class="block text-xs text-zinc-400">Вес тела (используется для расчета нагрузок со своим весом):</label>
+                        <div class="flex gap-2">
+                            <div class="relative flex-1">
+                                <input type="number" id="user-bodyweight" step="0.5" min="10" max="300" placeholder="75"
+                                    class="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-10 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand font-mono">
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">кг</span>
+                            </div>
+                            <button onclick="saveBodyWeight()"
+                                class="bg-brand hover:bg-brand-dark text-black font-bold px-4 py-2.5 rounded-xl text-xs transition duration-200 flex-shrink-0">
+                                Сохранить
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-t border-zinc-800 pt-4">
+                    <button onclick="confirmClearAll()"
+                        class="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-medium py-3 rounded-xl transition duration-150 text-sm flex items-center justify-center gap-2">
+                        <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                        Сбросить приложение
+                    </button>
+                </div>
+            </div>
+
+            <!-- Инструкция PWA -->
+            <div class="bg-zinc-900/50 p-5 rounded-2xl border border-zinc-800 text-center space-y-3">
+                <h4 class="text-sm font-bold text-zinc-300">Как установить на телефон?</h4>
+                <p class="text-xs text-zinc-400 leading-relaxed font-normal">
+                    Нажмите на значок <strong class="text-zinc-200">«Поделиться»</strong> в Safari (на iPhone) или
+                    <strong class="text-zinc-200">«Три точки»</strong> в Chrome (на Android) и выберите <strong
+                        class="text-zinc-200">«Добавить на экран "Домой"»</strong>. Дневник сможет запускаться автономно
+                    без интернета.
+                </p>
+                <div class="pt-2 text-[10px] text-zinc-500 font-mono">
+                    AnatomyFit Engine v3.3 (Rolling 7-Day Window Analysis)
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- НАВИГАЦИОННАЯ ПАНЕЛЬ СНИЗУ -->
+    <nav class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 border-t border-zinc-800 backdrop-blur-md py-2 px-4">
+        <div class="max-w-md mx-auto flex justify-between items-center">
+
+            <button onclick="switchTab('workout')" id="nav-workout"
+                class="flex flex-col items-center gap-1 flex-1 text-brand">
+                <i data-lucide="zap" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">Тренировка</span>
+            </button>
+
+            <button onclick="switchTab('programs')" id="nav-programs"
+                class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
+                <i data-lucide="book-open" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">Программы</span>
+            </button>
+
+            <button onclick="switchTab('stats')" id="nav-stats"
+                class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
+                <i data-lucide="radar" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">Анатомия</span>
+            </button>
+
+            <button onclick="switchTab('exercises')" id="nav-exercises"
+                class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
+                <i data-lucide="fingerprint" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">База</span>
+            </button>
+
+            <button onclick="switchTab('settings')" id="nav-settings"
+                class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
+                <i data-lucide="sliders" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">Опции</span>
+            </button>
+
+        </div>
+    </nav>
+
+    <!-- TOAST УВЕДОМЛЕНИЯ -->
+    <div id="toast"
+        class="fixed bottom-24 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-700 text-zinc-100 text-xs px-4 py-3 rounded-xl shadow-2xl opacity-0 translate-y-2 pointer-events-none transition-all duration-300 z-50 flex items-center gap-2 max-w-[90%]">
+        <i data-lucide="info" class="w-4 h-4 text-brand" id="toast-icon"></i>
+        <span id="toast-message">Сообщение</span>
+    </div>
+
+    <!-- МОДАЛКА CONFIRM -->
+    <div id="confirm-modal"
+        class="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-brand-card border border-zinc-800 p-6 rounded-2xl max-w-sm w-full space-y-4">
+            <h3 class="font-bold text-lg text-zinc-100">Вы уверены?</h3>
+            <p class="text-xs text-zinc-400" id="confirm-text">Это действие нельзя отменить.</p>
+            <div class="flex gap-3 pt-2">
+                <button onclick="closeConfirm(false)"
+                    class="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold rounded-xl text-sm transition">Отмена</button>
+                <button onclick="closeConfirm(true)"
+                    class="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-xl text-sm transition">Да,
+                    сделать</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- МОДАЛКА ДЕТАЛЕЙ ТРЕНИРОВКИ -->
+    <div id="workout-details-modal"
+        class="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 hidden">
+            <div
+                class="bg-brand-card border border-zinc-800 p-5 rounded-2xl max-w-sm w-full space-y-4 max-h-[85vh] flex flex-col">
+                <div class="flex items-center justify-between border-b border-zinc-800 pb-3 flex-shrink-0">
+                    <div>
+                        <h3 class="font-bold text-zinc-100 text-base" id="detail-modal-title">Детали тренировки</h3>
+                        <span class="text-[10px] text-zinc-500 font-mono block" id="detail-modal-date">--</span>
+                        <input type="date" id="detail-modal-date-input"
+                            class="hidden bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-200 focus:outline-none focus:border-brand font-mono mt-1">
+                    </div>
+                    <button onclick="closeWorkoutDetails()" class="text-zinc-400 hover:text-zinc-200 p-1">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <div class="overflow-y-auto pr-1 flex-1 py-1 space-y-3 font-medium" id="detail-modal-logs">
+                    <!-- Рендерится динамически: Упражнения и подходы -->
+                </div>
+                <div class="flex gap-2 pt-3 border-t border-zinc-800 flex-shrink-0" id="detail-modal-footer">
+                    <button id="btn-edit-workout-session" onclick="toggleEditWorkoutSession()"
+                        class="flex-1 py-2.5 bg-brand/10 border border-brand/20 hover:bg-brand/20 text-brand font-semibold rounded-xl text-[11px] transition flex items-center justify-center gap-1">
+                        <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                        Редактировать
+                    </button>
+                    <button onclick="deleteWorkoutSessionFromDetail()"
+                        class="py-2.5 px-3 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-400 font-semibold rounded-xl text-[11px] transition flex items-center justify-center"
+                        title="Удалить тренировку">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button onclick="closeWorkoutDetails()"
+                        class="py-2.5 px-4 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-[11px] transition">
+                        Закрыть
+                    </button>
+                </div>
+                <div class="flex gap-2 pt-3 border-t border-zinc-800 flex-shrink-0 hidden"
+                    id="detail-modal-edit-footer">
+                    <button onclick="saveWorkoutSessionEdits()"
+                        class="flex-1 py-2.5 bg-brand hover:bg-brand-dark text-black font-bold rounded-xl text-[11px] transition flex items-center justify-center gap-1">
+                        <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                        Сохранить
+                    </button>
+                    <button onclick="cancelWorkoutSessionEdits()"
+                        class="flex-1 py-2.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-[11px] transition">
+                        Отмена
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- МОДАЛКА ДЕТАЛЕЙ МЫШЦЫ -->
+        <div id="muscle-drilldown-modal"
+            class="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 hidden">
+            <div
+                class="bg-brand-card border border-zinc-800 p-5 rounded-2xl max-w-sm w-full space-y-4 max-h-[80vh] flex flex-col">
+                <div class="flex items-center justify-between border-b border-zinc-800 pb-3 flex-shrink-0">
+                    <div>
+                        <h3 class="font-bold text-zinc-100 text-base" id="muscle-modal-title">Детализация мышцы</h3>
+                        <span class="text-[10px] text-zinc-400 font-medium" id="muscle-modal-subtitle">Работа за
+                            последние 7 дней</span>
+                    </div>
+                    <button onclick="closeMuscleDrilldown()" class="text-zinc-400 hover:text-zinc-200 p-1">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <div class="overflow-y-auto pr-1 flex-1 py-1 space-y-3" id="muscle-modal-content">
+                    <!-- Рендерится динамически: Упражнения и их вклад -->
+                </div>
+                <div class="pt-2 border-t border-zinc-800 flex-shrink-0">
+                    <button onclick="closeMuscleDrilldown()"
+                        class="w-full py-2.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-xs transition">
+                        Закрыть
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    <script>
+        console.log("=== AnatomyFit PWA Boot Diagnostics ===");
+        console.log("Current URL:", window.location.href);
+        console.log("Protocol:", window.location.protocol);
+        console.log("User Agent:", navigator.userAgent);
+        console.log("IndexedDB Support:", typeof indexedDB !== 'undefined');
+        console.log("Service Worker Support:", 'serviceWorker' in navigator);
+
+        window.addEventListener('error', function(event) {
+            console.error("!!! UNCAUGHT RUNTIME ERROR !!!");
+            console.error("Message:", event.message);
+            console.error("Source:", event.filename, "Line:", event.lineno, "Col:", event.colno);
+            console.error("Error Object:", event.error);
+            if (event.error && event.error.stack) {
+                console.error("Stack Trace:\n", event.error.stack);
+            }
+        });
+
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error("!!! UNHANDLED PROMISE REJECTION !!!");
+            console.error("Reason:", event.reason);
+            if (event.reason && event.reason.stack) {
+                console.error("Stack Trace:\n", event.reason.stack);
+            }
+        });
+    </script>
+    <script type="module" src="js/ui.js"></script>
+</body>
+
+</html>
