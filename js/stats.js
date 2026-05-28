@@ -177,28 +177,31 @@ export async function updateStatistics() {
             const ex = exerciseMap[log.exerciseId];
             if (!ex) return;
 
-            if (statsMode === 'sets') {
-                if (targetObj[ex.primaryMuscle] !== undefined) {
-                    targetObj[ex.primaryMuscle] += 1;
-                }
-                if (ex.secondaryMuscle && targetObj[ex.secondaryMuscle] !== undefined) {
-                    targetObj[ex.secondaryMuscle] += ex.secondaryCoeff;
-                }
-                if (ex.tertiaryMuscle && targetObj[ex.tertiaryMuscle] !== undefined) {
-                    targetObj[ex.tertiaryMuscle] += ex.tertiaryCoeff;
-                }
-            } else {
-                const effW = log.weight + (ex.usesBodyweight ? bodyWeight : 0);
-                const baseVolume = effW * log.reps;
+            // Если есть muscleLoads, используем его, иначе делаем фолбек на старые поля
+            const loads = ex.muscleLoads || {
+                [ex.primaryMuscle]: 1.0,
+                ...(ex.secondaryMuscle ? { [ex.secondaryMuscle]: ex.secondaryCoeff || 0.5 } : {}),
+                ...(ex.tertiaryMuscle ? { [ex.tertiaryMuscle]: ex.tertiaryCoeff || 0.3 } : {})
+            };
 
-                if (targetObj[ex.primaryMuscle] !== undefined) {
-                    targetObj[ex.primaryMuscle] += baseVolume;
+            // Нормализуем фолбек, если сумма не равна 1.0
+            if (!ex.muscleLoads) {
+                const sum = Object.values(loads).reduce((a, b) => a + b, 0);
+                if (sum > 0) {
+                    for (const k of Object.keys(loads)) {
+                        loads[k] = loads[k] / sum;
+                    }
                 }
-                if (ex.secondaryMuscle && targetObj[ex.secondaryMuscle] !== undefined) {
-                    targetObj[ex.secondaryMuscle] += baseVolume * ex.secondaryCoeff;
-                }
-                if (ex.tertiaryMuscle && targetObj[ex.tertiaryMuscle] !== undefined) {
-                    targetObj[ex.tertiaryMuscle] += baseVolume * ex.tertiaryCoeff;
+            }
+
+            for (const [muscle, coeff] of Object.entries(loads)) {
+                if (targetObj[muscle] !== undefined) {
+                    if (statsMode === 'sets') {
+                        targetObj[muscle] += coeff;
+                    } else {
+                        const effW = log.weight + (ex.usesBodyweight ? bodyWeight : 0);
+                        targetObj[muscle] += effW * log.reps * coeff;
+                    }
                 }
             }
         });
@@ -471,21 +474,32 @@ export async function showMuscleDrilldown(muscleKey) {
         const ex = exerciseMap[log.exerciseId];
         if (!ex) return;
 
-        let role = '';
-        let coeff = 0;
+        const loads = ex.muscleLoads || {
+            [ex.primaryMuscle]: 1.0,
+            ...(ex.secondaryMuscle ? { [ex.secondaryMuscle]: ex.secondaryCoeff || 0.5 } : {}),
+            ...(ex.tertiaryMuscle ? { [ex.tertiaryMuscle]: ex.tertiaryCoeff || 0.3 } : {})
+        };
 
-        if (ex.primaryMuscle === muscleKey) {
-            role = 'Основная';
-            coeff = 1.0;
-        } else if (ex.secondaryMuscle === muscleKey) {
-            role = 'Вторичная';
-            coeff = ex.secondaryCoeff || 0;
-        } else if (ex.tertiaryMuscle === muscleKey) {
-            role = 'Стабилизатор';
-            coeff = ex.tertiaryCoeff || 0;
+        // Нормализуем фолбек, если сумма не равна 1.0
+        if (!ex.muscleLoads) {
+            const sum = Object.values(loads).reduce((a, b) => a + b, 0);
+            if (sum > 0) {
+                for (const k of Object.keys(loads)) {
+                    loads[k] = loads[k] / sum;
+                }
+            }
         }
 
+        const coeff = loads[muscleKey] || 0;
+
         if (coeff > 0) {
+            let role = 'Стабилизатор';
+            if (coeff >= 0.4) {
+                role = 'Основная';
+            } else if (coeff >= 0.15) {
+                role = 'Вторичная';
+            }
+
             if (!contribution[log.exerciseId]) {
                 contribution[log.exerciseId] = {
                     exercise: ex,
