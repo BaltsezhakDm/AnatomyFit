@@ -3,7 +3,7 @@ import { db, DEFAULT_EXERCISES, DEFAULT_PROGRAMS, getBodyWeight } from './db.js'
 import { updateStatistics, MUSCLE_NAMES } from './stats.js';
 import { loadRoutinesInSelectors } from './programs.js';
 import { loadExercisesInSelect, loadAllExercisesList } from './exercises.js';
-import { buildActiveSessionUI, restoreSessionFromStorage, loadWorkoutHistory, setActiveSession } from './workout.js';
+import { buildActiveSessionUI, restoreSessionFromStorage, loadWorkoutHistory, setActiveSession, getSessionName } from './workout.js';
 
 export let pendingConfirmResolve = null;
 
@@ -284,12 +284,78 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
+export async function exportDataCSV() {
+    try {
+        const logs = await db.workoutLogs.toArray();
+        const exercises = await db.exercises.toArray();
+        const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
+        const programs = await db.programs.toArray();
+
+        // Группируем подходы по сессиям/датам для определения названия программы/тренировки
+        const sessions = {};
+        logs.forEach(log => {
+            const key = log.sessionId || ('date-' + log.date);
+            if (!sessions[key]) {
+                sessions[key] = [];
+            }
+            sessions[key].push(log.exerciseId);
+        });
+
+        // Создаем карту: sessionId/date-key -> Название тренировки
+        const sessionNames = {};
+        for (const [key, exIds] of Object.entries(sessions)) {
+            const uniqueExIds = [...new Set(exIds)];
+            sessionNames[key] = getSessionName(uniqueExIds, programs);
+        }
+
+        // Сортируем логи по дате по возрастанию
+        logs.sort((a, b) => a.date.localeCompare(b.date));
+
+        // BOM для корректной кодировки UTF-8 в Excel (поддержка кириллицы)
+        let csvContent = "\uFEFF";
+        csvContent += "Дата;Программа;Упражнение;Первичная группа;Вес;Повторения;Тоннаж\n";
+
+        const bodyWeight = getBodyWeight();
+
+        logs.forEach(log => {
+            const ex = exerciseMap[log.exerciseId] || { name: 'Удаленное упражнение', primaryMuscle: 'unknown', usesBodyweight: 0 };
+            const sessionKey = log.sessionId || ('date-' + log.date);
+            const progName = sessionNames[sessionKey] || 'Свободная тренировка';
+            const muscleName = MUSCLE_NAMES[ex.primaryMuscle] || ex.primaryMuscle || 'Неизвестно';
+            
+            const effWeight = log.weight + (ex.usesBodyweight ? bodyWeight : 0);
+            const tonnage = effWeight * log.reps;
+
+            const safeName = ex.name.replace(/;/g, ',');
+            const safeProgName = progName.replace(/;/g, ',');
+            
+            csvContent += `${log.date};${safeProgName};${safeName};${muscleName};${log.weight};${log.reps};${tonnage}\n`;
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `anatomyfit_history_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        showToast('История экспортирована в CSV!', 'success');
+    } catch (e) {
+        console.error("CSV Export error", e);
+        showToast('Не удалось экспортировать CSV: ' + e.message, 'error');
+    }
+}
+
 // Экспортируем функции в объект window для корректной работы onclick / onchange в HTML
 window.showToast = showToast;
 window.showConfirm = showConfirm;
 window.closeConfirm = closeConfirm;
 window.switchTab = switchTab;
 window.exportData = exportData;
+window.exportDataCSV = exportDataCSV;
 window.importData = importData;
 window.confirmClearAll = confirmClearAll;
 window.saveBodyWeight = saveBodyWeight;

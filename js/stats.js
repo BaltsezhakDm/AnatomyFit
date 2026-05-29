@@ -238,6 +238,7 @@ export async function updateStatistics() {
     }
 
     renderHistoryChart(dayLabels, dayValues);
+    updateMuscleHeatmap(currentData);
 }
 
 function renderMuscleProgressBars(currentData, prevData) {
@@ -577,8 +578,102 @@ export function closeMuscleDrilldown() {
     if (modal) modal.classList.add('hidden');
 }
 
+export function toggleStatsBodyView(view) {
+    console.log("js/stats.js: toggleStatsBodyView called with:", view);
+    const svg = document.getElementById('stats-muscle-map-svg');
+    const frontBtn = document.getElementById('btn-stats-body-front');
+    const backBtn = document.getElementById('btn-stats-body-back');
+    const frontGroup = document.getElementById('stats-body-front-group');
+    const backGroup = document.getElementById('stats-body-back-group');
+
+    if (view === 'front') {
+        if (svg) svg.setAttribute('viewBox', '0 0 88 207');
+        if (frontBtn) {
+            frontBtn.className = "flex-1 px-3 py-1.5 text-[10px] font-bold rounded-lg bg-brand text-black transition-all";
+        }
+        if (backBtn) {
+            backBtn.className = "flex-1 px-3 py-1.5 text-[10px] font-bold rounded-lg text-zinc-400 bg-transparent transition-all";
+        }
+        if (frontGroup) frontGroup.classList.remove('hidden');
+        if (backGroup) backGroup.classList.add('hidden');
+    } else {
+        if (svg) svg.setAttribute('viewBox', '88 0 88 207');
+        if (frontBtn) {
+            frontBtn.className = "flex-1 px-3 py-1.5 text-[10px] font-bold rounded-lg text-zinc-400 bg-transparent transition-all";
+        }
+        if (backBtn) {
+            backBtn.className = "flex-1 px-3 py-1.5 text-[10px] font-bold rounded-lg bg-brand text-black transition-all";
+        }
+        if (frontGroup) frontGroup.classList.add('hidden');
+        if (backGroup) backGroup.classList.remove('hidden');
+    }
+}
+
+export function updateMuscleHeatmap(currentData) {
+    const paths = document.querySelectorAll('.stats-muscle-path');
+    const maxValue = Math.max(...Object.values(currentData)) || 1;
+
+    paths.forEach(p => {
+        const muscleKey = p.getAttribute('data-muscle');
+        const val = currentData[muscleKey] || 0;
+        const childPaths = p.tagName.toLowerCase() === 'path' ? [p] : p.querySelectorAll('path');
+
+        let color = '#18181b';
+        let opacity = 1.0;
+        let glow = false;
+
+        if (val > 0) {
+            if (statsMode === 'sets') {
+                const target = MUSCLE_WEEKLY_TARGETS[muscleKey] || { min: 8, max: 14 };
+                if (val < target.min) {
+                    color = '#064e3b';
+                    opacity = 0.5 + (val / target.min) * 0.4;
+                } else if (val <= target.max) {
+                    color = '#10b981';
+                    glow = true;
+                } else {
+                    color = '#f43f5e';
+                    glow = true;
+                }
+            } else {
+                const ratio = val / maxValue;
+                if (ratio < 0.3) {
+                    color = '#0f766e';
+                } else if (ratio < 0.7) {
+                    color = '#0d9488';
+                } else {
+                    color = '#14b8a6';
+                    glow = true;
+                }
+            }
+        }
+
+        childPaths.forEach(cp => {
+            cp.style.fill = color;
+            if (val > 0) {
+                cp.style.fillOpacity = opacity;
+                cp.style.stroke = color;
+                cp.style.strokeWidth = "0.8";
+                if (glow) {
+                    cp.style.filter = "url(#stats-glow)";
+                } else {
+                    cp.style.filter = '';
+                }
+            } else {
+                cp.style.fill = '#18181b';
+                cp.style.fillOpacity = '';
+                cp.style.stroke = '#27272a';
+                cp.style.strokeWidth = '0.4';
+                cp.style.filter = '';
+            }
+        });
+    });
+}
+
 // Привязка к window для поддержки onclick в HTML разметке
 window.setStatsMode = setStatsMode;
 window.showMuscleDrilldown = showMuscleDrilldown;
 window.closeMuscleDrilldown = closeMuscleDrilldown;
+window.toggleStatsBodyView = toggleStatsBodyView;
+window.updateMuscleHeatmap = updateMuscleHeatmap;
 console.log("js/stats.js: script successfully finished execution");

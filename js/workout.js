@@ -5,6 +5,40 @@ import { showToast, showConfirm, switchTab } from './ui.js';
 
 export let activeSession = null;
 
+let wakeLock = null;
+
+async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) {
+        console.log("Wake Lock API not supported by this browser");
+        return;
+    }
+    try {
+        if (wakeLock) return;
+        wakeLock = await navigator.wakeLock.request('screen');
+        console.log("Wake Lock acquired successfully");
+        wakeLock.addEventListener('release', () => {
+            console.log("Wake Lock was released");
+            wakeLock = null;
+        });
+    } catch (err) {
+        console.warn("Wake Lock acquisition failed:", err);
+    }
+}
+
+function releaseWakeLock() {
+    if (wakeLock) {
+        wakeLock.release();
+        wakeLock = null;
+    }
+}
+
+// При возвращении в приложение переподключаем Wake Lock при наличии активной тренировки
+document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && activeSession) {
+        await requestWakeLock();
+    }
+});
+
 export function setActiveSession(val) {
     activeSession = val;
     if (val === null) {
@@ -54,6 +88,7 @@ export async function startWorkoutSession(isFree = false) {
     localStorage.setItem('active_session_anatomyfit', JSON.stringify(activeSession));
     buildActiveSessionUI();
     showToast(`Тренировка "${activeSession.name}" запущена!`, 'success');
+    requestWakeLock();
 }
 
 export function restoreSessionFromStorage() {
@@ -61,7 +96,9 @@ export function restoreSessionFromStorage() {
     if (cached) {
         activeSession = JSON.parse(cached);
         buildActiveSessionUI();
+        requestWakeLock();
     }
+    restoreRestTimer();
 }
 
 export async function buildActiveSessionUI() {
@@ -256,13 +293,21 @@ let timerInterval = null;
 let timerSecondsLeft = 0;
 let timerIsPaused = false;
 
-export function startRestTimer(seconds = 90) {
+export function startRestTimer(seconds = 90, updateStorage = true) {
     clearInterval(timerInterval);
     timerSecondsLeft = seconds;
     timerIsPaused = false;
 
     const card = document.getElementById('rest-timer-card');
     if (card) card.classList.remove('hidden');
+
+    if (updateStorage) {
+        const endTimestamp = Date.now() + seconds * 1000;
+        localStorage.setItem('rest_timer_end', endTimestamp);
+        localStorage.setItem('rest_timer_paused', 'false');
+        localStorage.setItem('rest_timer_duration', seconds);
+        localStorage.removeItem('rest_timer_seconds_left');
+    }
 
     updateTimerUI();
 
@@ -295,11 +340,26 @@ export function updateTimerUI() {
 
 export function toggleTimer() {
     timerIsPaused = !timerIsPaused;
+    if (timerIsPaused) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        localStorage.setItem('rest_timer_paused', 'true');
+        localStorage.setItem('rest_timer_seconds_left', timerSecondsLeft);
+        localStorage.removeItem('rest_timer_end');
+    } else {
+        startRestTimer(timerSecondsLeft, true);
+    }
     updateTimerUI();
 }
 
 export function adjustTimer(delta) {
     timerSecondsLeft = Math.max(0, timerSecondsLeft + delta);
+    if (!timerIsPaused) {
+        const endTimestamp = Date.now() + timerSecondsLeft * 1000;
+        localStorage.setItem('rest_timer_end', endTimestamp);
+    } else {
+        localStorage.setItem('rest_timer_seconds_left', timerSecondsLeft);
+    }
     updateTimerUI();
 }
 
@@ -308,6 +368,39 @@ export function stopTimer() {
     timerInterval = null;
     const card = document.getElementById('rest-timer-card');
     if (card) card.classList.add('hidden');
+    localStorage.removeItem('rest_timer_end');
+    localStorage.removeItem('rest_timer_paused');
+    localStorage.removeItem('rest_timer_seconds_left');
+    localStorage.removeItem('rest_timer_duration');
+}
+
+export function restoreRestTimer() {
+    const paused = localStorage.getItem('rest_timer_paused') === 'true';
+    const duration = parseInt(localStorage.getItem('rest_timer_duration'));
+    if (isNaN(duration)) return;
+
+    if (paused) {
+        const secondsLeft = parseInt(localStorage.getItem('rest_timer_seconds_left')) || 90;
+        timerSecondsLeft = secondsLeft;
+        timerIsPaused = true;
+        const card = document.getElementById('rest-timer-card');
+        if (card) card.classList.remove('hidden');
+        updateTimerUI();
+    } else {
+        const endTimestamp = parseInt(localStorage.getItem('rest_timer_end'));
+        if (!isNaN(endTimestamp)) {
+            const now = Date.now();
+            const remaining = Math.ceil((endTimestamp - now) / 1000);
+            if (remaining > 0) {
+                startRestTimer(remaining, false);
+            } else {
+                localStorage.removeItem('rest_timer_end');
+                localStorage.removeItem('rest_timer_paused');
+                localStorage.removeItem('rest_timer_seconds_left');
+                localStorage.removeItem('rest_timer_duration');
+            }
+        }
+    }
 }
 
 export function triggerTimerAlarm() {
@@ -355,6 +448,7 @@ export async function finishWorkoutSession() {
     showToast("Тренировка завершена! Отличная работа!", "success");
     await loadWorkoutHistory();
     switchTab('stats');
+    releaseWakeLock();
 }
 
 export async function cancelWorkoutSession() {
@@ -383,6 +477,7 @@ export async function cancelWorkoutSession() {
     showToast("Тренировка отменена", "info");
     await updateStatistics();
     await loadWorkoutHistory();
+    releaseWakeLock();
 }
 
 export async function loadTodayLogs() {
@@ -454,7 +549,7 @@ export async function deleteLog(id) {
 
 export let selectedHistorySessionId = null;
 export let selectedHistoryDate = null;
-function getSessionName(sessionExerciseIds, programs) {
+export function getSessionName(sessionExerciseIds, programs) {
     let bestProgram = null;
     let maxOverlap = 0;
 
