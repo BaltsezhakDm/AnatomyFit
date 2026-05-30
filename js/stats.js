@@ -579,34 +579,7 @@ export function closeMuscleDrilldown() {
 }
 
 export function toggleStatsBodyView(view) {
-    console.log("js/stats.js: toggleStatsBodyView called with:", view);
-    const svg = document.getElementById('stats-muscle-map-svg');
-    const frontBtn = document.getElementById('btn-stats-body-front');
-    const backBtn = document.getElementById('btn-stats-body-back');
-    const frontGroup = document.getElementById('stats-body-front-group');
-    const backGroup = document.getElementById('stats-body-back-group');
-
-    if (view === 'front') {
-        if (svg) svg.setAttribute('viewBox', '0 0 88 207');
-        if (frontBtn) {
-            frontBtn.className = "flex-1 px-3 py-1.5 text-[10px] font-bold rounded-lg bg-brand text-black transition-all";
-        }
-        if (backBtn) {
-            backBtn.className = "flex-1 px-3 py-1.5 text-[10px] font-bold rounded-lg text-zinc-400 bg-transparent transition-all";
-        }
-        if (frontGroup) frontGroup.classList.remove('hidden');
-        if (backGroup) backGroup.classList.add('hidden');
-    } else {
-        if (svg) svg.setAttribute('viewBox', '88 0 88 207');
-        if (frontBtn) {
-            frontBtn.className = "flex-1 px-3 py-1.5 text-[10px] font-bold rounded-lg text-zinc-400 bg-transparent transition-all";
-        }
-        if (backBtn) {
-            backBtn.className = "flex-1 px-3 py-1.5 text-[10px] font-bold rounded-lg bg-brand text-black transition-all";
-        }
-        if (frontGroup) frontGroup.classList.add('hidden');
-        if (backGroup) backGroup.classList.remove('hidden');
-    }
+    // No-op: Обе стороны тела теперь отображаются одновременно на тепловой карте
 }
 
 export function updateMuscleHeatmap(currentData) {
@@ -652,13 +625,9 @@ export function updateMuscleHeatmap(currentData) {
             cp.style.fill = color;
             if (val > 0) {
                 cp.style.fillOpacity = opacity;
-                cp.style.stroke = color;
+                cp.style.stroke = '#09090b';
                 cp.style.strokeWidth = "0.8";
-                if (glow) {
-                    cp.style.filter = "url(#stats-glow)";
-                } else {
-                    cp.style.filter = '';
-                }
+                cp.style.filter = '';
             } else {
                 cp.style.fill = '#18181b';
                 cp.style.fillOpacity = '';
