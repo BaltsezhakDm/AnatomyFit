@@ -540,22 +540,22 @@ export async function showMuscleDrilldown(muscleKey) {
                 ? `${Number(c.value.toFixed(1))} подх. (всего ${c.setsCount} подх.)`
                 : `${Math.round(c.value)} кг`;
 
-            let roleBadgeColor = 'bg-zinc-800 text-zinc-400 border-zinc-700';
+            let roleBadgeColor = 'bg-zinc-800 text-zinc-400';
             if (c.role === 'Основная') {
-                roleBadgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                roleBadgeColor = 'bg-emerald-500/10 text-emerald-400';
             } else if (c.role === 'Вторичная') {
-                roleBadgeColor = 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20';
+                roleBadgeColor = 'bg-yellow-500/10 text-yellow-500';
             }
 
             return `
-            <div class="bg-zinc-900/40 p-3 rounded-xl border border-zinc-850 flex items-center justify-between gap-3">
+            <div class="bg-zinc-900/40 p-3 rounded-xl border border-zinc-800/40 flex items-center justify-between gap-3">
                 <div class="space-y-1 min-w-0">
                     <div class="text-xs font-bold text-zinc-200 truncate flex items-center gap-1.5">
                         <i data-lucide="dumbbell" class="w-3.5 h-3.5 text-zinc-500 flex-shrink-0"></i>
                         <span class="truncate">${c.exercise.name}</span>
                     </div>
                     <div class="flex items-center gap-1.5">
-                        <span class="px-1.5 py-0.5 border text-[8px] font-bold rounded uppercase ${roleBadgeColor}">
+                        <span class="px-2 py-0.5 text-[8px] font-bold rounded uppercase ${roleBadgeColor}">
                             ${c.role}
                         </span>
                     </div>

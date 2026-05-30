@@ -1,4 +1,4 @@
-const CACHE_NAME = 'anatomyfit-v4.2.1';
+const CACHE_NAME = 'anatomyfit-v4.2.2';
 const ASSETS = [
     './',
     './index.html',
