@@ -136,12 +136,37 @@ export async function buildActiveSessionUI() {
 
     const select = document.getElementById('active-exercise-select');
     if (select) {
-        select.innerHTML = sessionExercises.map(ex => `
-        <option value="${ex.id}">${ex.name}</option>
-    `).join('');
+        const currentValue = select.value;
+        let optionsHtml = '';
 
+        // Упражнения по плану программы
         if (sessionExercises.length > 0) {
+            optionsHtml += `<optgroup label="По плану тренировки">`;
+            optionsHtml += sessionExercises.map(ex => `
+                <option value="${ex.id}">${ex.name}</option>
+            `).join('');
+            optionsHtml += `</optgroup>`;
+        }
+
+        // Все остальные упражнения из базы данных
+        const otherExercises = exercises.filter(ex => !activeSession.exerciseIds.includes(ex.id));
+        otherExercises.sort((a, b) => a.name.localeCompare(b.name));
+        if (otherExercises.length > 0) {
+            optionsHtml += `<optgroup label="Другие упражнения">`;
+            optionsHtml += otherExercises.map(ex => `
+                <option value="${ex.id}">${ex.name}</option>
+            `).join('');
+            optionsHtml += `</optgroup>`;
+        }
+
+        select.innerHTML = optionsHtml;
+
+        if (currentValue && select.querySelector(`option[value="${currentValue}"]`)) {
+            select.value = currentValue;
+        } else if (sessionExercises.length > 0) {
             select.value = sessionExercises[0].id;
+        } else if (exercises.length > 0) {
+            select.value = exercises[0].id;
         }
     }
 
@@ -162,6 +187,25 @@ export async function onActiveExerciseChange() {
 
     const label = document.getElementById('current-workout-exercise-group');
     if (label) label.innerText = MUSCLE_NAMES[ex.primaryMuscle] || ex.primaryMuscle;
+
+    // Заполняем поля ввода из истории этого упражнения
+    const allLogs = await db.workoutLogs.where('exerciseId').equals(exId).toArray();
+    const weightInput = document.getElementById('input-weight');
+    const repsInput = document.getElementById('input-reps');
+
+    if (allLogs.length > 0) {
+        allLogs.sort((a, b) => {
+            const dateComp = a.date.localeCompare(b.date);
+            if (dateComp !== 0) return dateComp;
+            return (a.id || 0) - (b.id || 0);
+        });
+        const lastLog = allLogs[allLogs.length - 1];
+        if (weightInput) weightInput.value = lastLog.weight;
+        if (repsInput) repsInput.value = lastLog.reps;
+    } else {
+        if (weightInput) weightInput.value = '0';
+        if (repsInput) repsInput.value = '10';
+    }
 
     await updateProgressionAdvice(exId);
 }
@@ -278,6 +322,13 @@ export async function saveActiveSet() {
         reps,
         sessionId
     });
+
+    // Если упражнение новое для текущей сессии, добавляем его в список сессии
+    if (activeSession && !activeSession.exerciseIds.includes(exerciseId)) {
+        activeSession.exerciseIds.push(exerciseId);
+        localStorage.setItem('active_session_anatomyfit', JSON.stringify(activeSession));
+        await buildActiveSessionUI();
+    }
 
     showToast("Подход записан!", "success");
     await loadTodayLogs();
@@ -632,7 +683,7 @@ export async function loadWorkoutHistory() {
 
         return `
         <div onclick="console.log('History item clicked! sessionId:', ${sessIdStr}, 'date:', '${session.date}'); window.showWorkoutDetails(${sessIdStr}, '${session.date}')" 
-             class="bg-brand-card p-3.5 rounded-xl border border-zinc-800 flex items-center justify-between hover:border-zinc-700/80 active:scale-[0.98] transition duration-150 cursor-pointer">
+             class="bg-brand-card p-3.5 rounded-xl border border-zinc-800/30 flex items-center justify-between hover:border-zinc-700/50 active:scale-[0.98] transition duration-150 cursor-pointer">
             <div class="space-y-0.5">
                 <span class="text-[9px] text-brand uppercase font-extrabold tracking-wider block">${sessionName}</span>
                 <span class="text-xs font-semibold text-zinc-200 block">${formattedDate}</span>
@@ -752,14 +803,14 @@ export async function showWorkoutDetails(sessionId, date) {
                 weightText = `св${log.weight > 0 ? '+' + log.weight : log.weight < 0 ? log.weight : ''}`;
             }
             return `
-            <span class="inline-block bg-zinc-900 border border-zinc-800 text-[10px] px-2.5 py-1 rounded font-mono text-zinc-300">
+            <span class="inline-block bg-zinc-800/40 text-[10px] px-2 py-0.5 rounded font-mono text-zinc-300">
                 ${index + 1}: ${weightText} × ${log.reps}
             </span>
         `;
         }).join('');
 
         return `
-        <div class="space-y-1.5 bg-zinc-900/40 p-2.5 rounded-xl border border-zinc-850">
+        <div class="space-y-1.5 bg-zinc-900/40 p-2.5 rounded-xl border border-zinc-800/40">
             <div class="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
                 <i data-lucide="dumbbell" class="w-3.5 h-3.5 text-zinc-500"></i>
                 ${ex.name}
@@ -782,6 +833,9 @@ export function closeWorkoutDetails() {
     selectedHistorySessionId = null;
     selectedHistoryDate = null;
     isEditingWorkoutSession = false;
+
+    const addExerciseDiv = document.getElementById('detail-modal-edit-add-exercise');
+    if (addExerciseDiv) addExerciseDiv.classList.add('hidden');
 }
 
 export async function deleteWorkoutSessionFromDetail() {
@@ -832,6 +886,9 @@ export async function toggleEditWorkoutSession() {
     document.getElementById('detail-modal-footer').classList.add('hidden');
     document.getElementById('detail-modal-edit-footer').classList.remove('hidden');
 
+    const addExerciseDiv = document.getElementById('detail-modal-edit-add-exercise');
+    if (addExerciseDiv) addExerciseDiv.classList.remove('hidden');
+
     await renderWorkoutDetailsEditMode();
 }
 
@@ -875,7 +932,7 @@ export async function renderWorkoutDetailsEditMode() {
                 const weightVal = log.weight !== null && log.weight !== undefined ? log.weight : '';
                 const repsVal = log.reps !== null && log.reps !== undefined ? log.reps : '';
                 return `
-                <div class="flex items-center gap-1.5 bg-zinc-900 border border-zinc-850 p-1.5 rounded-lg">
+                <div class="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 p-1.5 rounded-lg">
                     <span class="text-[10px] font-mono text-zinc-500 w-4 text-center">${index + 1}:</span>
                     <div class="flex items-center gap-0.5 flex-1 min-w-0">
                         <input type="number" step="0.5" 
@@ -899,7 +956,7 @@ export async function renderWorkoutDetailsEditMode() {
             }).join('');
 
             return `
-            <div class="space-y-2 bg-zinc-900/20 p-2.5 rounded-xl border border-zinc-850">
+            <div class="space-y-2 bg-zinc-900/20 p-2.5 rounded-xl border border-zinc-800">
                 <div class="text-xs font-bold text-zinc-200 flex items-center justify-between">
                     <div class="flex items-center gap-1.5 truncate">
                         <i data-lucide="dumbbell" class="w-3.5 h-3.5 text-zinc-500 flex-shrink-0"></i>
@@ -917,24 +974,15 @@ export async function renderWorkoutDetailsEditMode() {
         }).join('');
     }
 
-    const allExercisesSorted = exercises.sort((a, b) => a.name.localeCompare(b.name));
-    const optionsHtml = allExercisesSorted.map(ex => `<option value="${ex.id}">${ex.name}</option>`).join('');
-
-    html += `
-    <div class="pt-3 border-t border-zinc-800 space-y-2">
-        <label class="block text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Добавить упражнение:</label>
-        <div class="flex gap-2">
-            <select id="edit-session-add-exercise-select" class="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-zinc-200 focus:outline-none focus:border-brand">
-                ${optionsHtml}
-            </select>
-            <button onclick="window.addExerciseToEditSession()" class="bg-brand/10 hover:bg-brand/20 text-brand border border-brand/20 px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1">
-                <i data-lucide="plus" class="w-3.5 h-3.5"></i> Добавить
-            </button>
-        </div>
-    </div>
-`;
-
     logsEl.innerHTML = html;
+
+    // Заполняем селектор добавления упражнений
+    const select = document.getElementById('edit-session-add-exercise-select');
+    if (select) {
+        const allExercisesSorted = exercises.sort((a, b) => a.name.localeCompare(b.name));
+        select.innerHTML = allExercisesSorted.map(ex => `<option value="${ex.id}">${ex.name}</option>`).join('');
+    }
+
     lucide.createIcons();
 }
 
@@ -987,6 +1035,9 @@ export function cancelWorkoutSessionEdits() {
 
     document.getElementById('detail-modal-footer').classList.remove('hidden');
     document.getElementById('detail-modal-edit-footer').classList.add('hidden');
+
+    const addExerciseDiv = document.getElementById('detail-modal-edit-add-exercise');
+    if (addExerciseDiv) addExerciseDiv.classList.add('hidden');
 
     showWorkoutDetails(selectedHistorySessionId, selectedHistoryDate);
 }

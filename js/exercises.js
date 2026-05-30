@@ -136,7 +136,7 @@ export function renderSliders() {
 
     if (keys.length === 0) {
         container.innerHTML = `
-            <div class="text-center py-8 text-xs text-zinc-500 italic bg-zinc-900/30 rounded-xl border border-zinc-850">
+            <div class="text-center py-8 text-xs text-zinc-500 italic bg-zinc-900/30 rounded-xl border border-zinc-800">
                 Кликните на мышцу на схеме слева, чтобы добавить нагрузку.
             </div>
         `;
@@ -150,7 +150,7 @@ export function renderSliders() {
         const color = MUSCLE_COLORS[key] || '#3f3f46';
 
         return `
-            <div class="p-2.5 bg-zinc-900 rounded-xl border border-zinc-850 space-y-1.5 transition">
+            <div class="p-2.5 bg-zinc-900 rounded-xl border border-zinc-800/40 space-y-1.5 transition">
                 <div class="flex justify-between items-center text-xs">
                     <span class="font-bold text-zinc-200 flex items-center gap-1.5">
                         <span class="w-2 h-2 rounded-full" style="background-color: ${color}"></span>
@@ -353,9 +353,12 @@ export async function createCustomExercise() {
             const card = document.getElementById(`exercise-card-${savedId}`);
             if (card) {
                 card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                card.classList.add('ring-2', 'ring-brand', 'border-brand');
+                card.style.borderColor = '#10b981';
+                card.style.boxShadow = '0 0 10px rgba(16, 185, 129, 0.4)';
+                card.style.transition = 'all 0.3s ease';
                 setTimeout(() => {
-                    card.classList.remove('ring-2', 'ring-brand', 'border-brand');
+                    card.style.borderColor = '';
+                    card.style.boxShadow = '';
                 }, 2000);
             }
         }, 200);
@@ -527,7 +530,7 @@ export async function loadAllExercisesList() {
                 const percent = Math.round(weight * 100);
                 const color = MUSCLE_COLORS[muscleKey] || '#71717a';
                 return `
-                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-zinc-950 border border-zinc-850 text-[9px] rounded font-medium text-zinc-300">
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 bg-zinc-800/40 text-[9px] rounded font-medium text-zinc-300">
                         <span class="w-1.5 h-1.5 rounded-full" style="background-color: ${color}"></span>
                         ${name} <span class="font-mono text-zinc-500 text-[8px]">${percent}%</span>
                     </span>
@@ -535,13 +538,13 @@ export async function loadAllExercisesList() {
             }).join('');
 
         const bwTag = item.usesBodyweight ? `
-            <span class="inline-flex items-center px-1.5 py-0.5 bg-brand/5 border border-brand/20 text-[9px] rounded font-bold uppercase tracking-wider text-brand font-mono">
+            <span class="inline-flex items-center px-2 py-0.5 bg-brand/10 text-[9px] rounded font-bold uppercase tracking-wider text-brand font-mono">
                 СВ
             </span>
         ` : '';
 
         return `
-            <div id="exercise-card-${item.id}" class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden transition-all duration-200 hover:border-zinc-700/60">
+            <div id="exercise-card-${item.id}" class="bg-zinc-900 rounded-xl border border-zinc-800/30 overflow-hidden transition-all duration-200 hover:border-zinc-700/50">
                 <div onclick="window.toggleExerciseHistory(${item.id})" class="px-3 py-2.5 flex justify-between items-center text-xs cursor-pointer hover:bg-zinc-800/40 transition">
                     <div class="space-y-1.5 min-w-0 flex-1 pr-2">
                         <span class="font-bold text-zinc-200 block text-xs flex items-center gap-1.5 truncate">
@@ -561,11 +564,11 @@ export async function loadAllExercisesList() {
                             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                         </button>
                         ${!item.isCustom ? `
-                            <span class="text-[8px] text-zinc-500 bg-zinc-950 border border-zinc-850 px-1 py-0.5 rounded uppercase font-mono tracking-wider ml-0.5">Баз</span>
+                            <span class="text-[8px] text-zinc-400 bg-zinc-800/40 px-1.5 py-0.5 rounded uppercase font-mono tracking-wider ml-0.5">Баз</span>
                         ` : ''}
                     </div>
                 </div>
-                <div id="exercise-details-${item.id}" class="hidden bg-zinc-950/50 border-t border-zinc-850 px-3 py-3 space-y-2 transition-all">
+                <div id="exercise-details-${item.id}" class="hidden bg-zinc-950/50 border-t border-zinc-800/40 px-3 py-3 space-y-2 transition-all">
                     <div class="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">История 1RM (One Rep Max)</div>
                     <div class="relative w-full h-32">
                         <canvas id="exercise-chart-${item.id}"></canvas>
