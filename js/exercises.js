@@ -272,6 +272,8 @@ export async function createCustomExercise() {
 
     const usesBodyweight = document.getElementById('custom-uses-bodyweight').checked ? 1 : 0;
 
+    let savedId = null;
+
     if (editingExerciseId !== null) {
         const exists = await db.exercises.where('name').equalsIgnoreCase(name).filter(ex => ex.id !== editingExerciseId).first();
         if (exists) {
@@ -279,7 +281,19 @@ export async function createCustomExercise() {
             return;
         }
 
-        await db.exercises.update(editingExerciseId, {
+        // Приведение типов для Dexie update
+        let idToUpdate = editingExerciseId;
+        let exExists = await db.exercises.get(editingExerciseId);
+        if (!exExists) {
+            exExists = await db.exercises.get(Number(editingExerciseId));
+            if (exExists) idToUpdate = Number(editingExerciseId);
+        }
+        if (!exExists) {
+            exExists = await db.exercises.get(String(editingExerciseId));
+            if (exExists) idToUpdate = String(editingExerciseId);
+        }
+
+        await db.exercises.update(idToUpdate, {
             name,
             primaryMuscle,
             secondaryMuscle,
@@ -290,6 +304,7 @@ export async function createCustomExercise() {
             muscleLoads
         });
 
+        savedId = idToUpdate;
         showToast('Упражнение успешно обновлено!', 'success');
         cancelEditExercise();
     } else {
@@ -299,7 +314,7 @@ export async function createCustomExercise() {
             return;
         }
 
-        await db.exercises.add({
+        const newId = await db.exercises.add({
             name,
             primaryMuscle,
             secondaryMuscle,
@@ -311,6 +326,7 @@ export async function createCustomExercise() {
             muscleLoads
         });
 
+        savedId = newId;
         if (nameInput) nameInput.value = '';
         document.getElementById('custom-uses-bodyweight').checked = false;
         showToast('Анатомическая техника записана!', 'success');
@@ -330,11 +346,33 @@ export async function createCustomExercise() {
     } catch (e) {
         console.error(e);
     }
+
+    // Плавный скролл к сохраненному упражнению и красивая подсветка
+    if (savedId) {
+        setTimeout(() => {
+            const card = document.getElementById(`exercise-card-${savedId}`);
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.classList.add('ring-2', 'ring-brand', 'border-brand');
+                setTimeout(() => {
+                    card.classList.remove('ring-2', 'ring-brand', 'border-brand');
+                }, 2000);
+            }
+        }, 200);
+    }
 }
 
 export async function editExercise(id) {
     editingExerciseId = id;
-    const ex = await db.exercises.get(id);
+    let ex = await db.exercises.get(id);
+    if (!ex) {
+        ex = await db.exercises.get(Number(id));
+        if (ex) editingExerciseId = Number(id);
+    }
+    if (!ex) {
+        ex = await db.exercises.get(String(id));
+        if (ex) editingExerciseId = String(id);
+    }
     if (!ex) return;
 
     const nameInput = document.getElementById('custom-exercise-name');
@@ -503,7 +541,7 @@ export async function loadAllExercisesList() {
         ` : '';
 
         return `
-            <div class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden transition-all duration-200 hover:border-zinc-700/60">
+            <div id="exercise-card-${item.id}" class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden transition-all duration-200 hover:border-zinc-700/60">
                 <div onclick="window.toggleExerciseHistory(${item.id})" class="px-3 py-2.5 flex justify-between items-center text-xs cursor-pointer hover:bg-zinc-800/40 transition">
                     <div class="space-y-1.5 min-w-0 flex-1 pr-2">
                         <span class="font-bold text-zinc-200 block text-xs flex items-center gap-1.5 truncate">
