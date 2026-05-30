@@ -17,13 +17,13 @@ export function showToast(message, type = 'info') {
     toastMsg.innerText = message;
     if (type === 'success') {
         toastIcon.setAttribute('data-lucide', 'check-circle');
-        toastIcon.className = "w-4 h-4 text-emerald-400";
+        toastIcon.setAttribute('class', "w-4 h-4 text-emerald-400");
     } else if (type === 'error') {
         toastIcon.setAttribute('data-lucide', 'alert-triangle');
-        toastIcon.className = "w-4 h-4 text-red-400";
+        toastIcon.setAttribute('class', "w-4 h-4 text-red-400");
     } else {
         toastIcon.setAttribute('data-lucide', 'info');
-        toastIcon.className = "w-4 h-4 text-brand";
+        toastIcon.setAttribute('class', "w-4 h-4 text-brand");
     }
     lucide.createIcons();
 
