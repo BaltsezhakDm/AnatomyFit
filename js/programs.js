@@ -1,7 +1,7 @@
 console.log("js/programs.js: script started execution");
 import { db } from './db.js';
 import { showToast, showConfirm, switchTab } from './ui.js';
-import { startWorkoutSession } from './workout.js';
+import { startWorkoutSession, loadWorkoutHistory } from './workout.js';
 
 export let selectedExercisesForCreation = [];
 export let editingProgramId = null;
@@ -127,6 +127,11 @@ export async function createNewProgram() {
     if (preview) preview.innerText = "Упражнения не выбраны. Кликните по упражнениям выше.";
 
     await loadRoutinesInSelectors();
+    try {
+        await loadWorkoutHistory();
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 export async function editRoutine(id) {
@@ -202,6 +207,11 @@ export async function deleteRoutine(id) {
     await db.programs.delete(id);
     showToast("Программа тренировок удалена", "info");
     await loadRoutinesInSelectors();
+    try {
+        await loadWorkoutHistory();
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 export function startRoutineFromCard(id) {

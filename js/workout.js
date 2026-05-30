@@ -789,7 +789,14 @@ export async function deleteWorkoutSessionFromDetail() {
     if (!conf) return;
 
     if (selectedHistorySessionId) {
-        await db.workoutLogs.where('sessionId').equals(selectedHistorySessionId).delete();
+        const idNum = Number(selectedHistorySessionId);
+        const idStr = String(selectedHistorySessionId);
+        await db.workoutLogs.where('sessionId').equals(idNum).delete();
+        await db.workoutLogs.where('sessionId').equals(idStr).delete();
+        
+        if (activeSession && activeSession.sessionId === selectedHistorySessionId) {
+            setActiveSession(null);
+        }
     } else if (selectedHistoryDate) {
         await db.workoutLogs.where('date').equals(selectedHistoryDate).filter(l => !l.sessionId).delete();
     }
@@ -800,6 +807,7 @@ export async function deleteWorkoutSessionFromDetail() {
     await loadWorkoutHistory();
     await updateStatistics();
     await loadTodayLogs();
+    buildActiveSessionUI();
 }
 
 export async function toggleEditWorkoutSession() {
@@ -1004,7 +1012,10 @@ export async function saveWorkoutSessionEdits() {
     if (!conf) return;
 
     if (editingSessionId) {
-        await db.workoutLogs.where('sessionId').equals(editingSessionId).delete();
+        const idNum = Number(editingSessionId);
+        const idStr = String(editingSessionId);
+        await db.workoutLogs.where('sessionId').equals(idNum).delete();
+        await db.workoutLogs.where('sessionId').equals(idStr).delete();
     } else if (selectedHistoryDate) {
         await db.workoutLogs.where('date').equals(selectedHistoryDate).filter(l => !l.sessionId).delete();
     }

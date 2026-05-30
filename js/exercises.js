@@ -1,8 +1,9 @@
 console.log("js/exercises.js: script started execution");
 import { db, getBodyWeight } from './db.js';
 import { showToast, showConfirm } from './ui.js';
-import { MUSCLE_NAMES } from './stats.js';
+import { MUSCLE_NAMES, updateStatistics } from './stats.js';
 import { loadRoutinesInSelectors } from './programs.js';
+import { buildActiveSessionUI, loadWorkoutHistory } from './workout.js';
 
 export let editingExerciseId = null;
 export let activeExerciseCharts = {};
@@ -40,28 +41,7 @@ export async function loadExercisesInSelect() {
 }
 
 export function toggleBodyView(view) {
-    console.log("js/exercises.js: toggleBodyView called with:", view);
-    const svg = document.getElementById('muscle-map-svg');
-    const frontBtn = document.getElementById('btn-body-front');
-    const backBtn = document.getElementById('btn-body-back');
-
-    if (view === 'front') {
-        if (svg) svg.setAttribute('viewBox', '0 0 88 207');
-        if (frontBtn) {
-            frontBtn.className = "px-2 py-1 text-[9px] font-bold rounded bg-brand text-black transition-all";
-        }
-        if (backBtn) {
-            backBtn.className = "px-2 py-1 text-[9px] font-bold rounded text-zinc-400 bg-transparent transition-all";
-        }
-    } else {
-        if (svg) svg.setAttribute('viewBox', '88 0 88 207');
-        if (frontBtn) {
-            frontBtn.className = "px-2 py-1 text-[9px] font-bold rounded text-zinc-400 bg-transparent transition-all";
-        }
-        if (backBtn) {
-            backBtn.className = "px-2 py-1 text-[9px] font-bold rounded bg-brand text-black transition-all";
-        }
-    }
+    // No-op: Обе стороны тела теперь отображаются одновременно бок о бок в конструкторе упражнений
 }
 
 export function selectMuscleOnMap(muscleKey) {
@@ -217,9 +197,9 @@ export function syncMapHighlight() {
                 childPaths.forEach(cp => {
                     cp.style.fill = color;
                     cp.style.fillOpacity = opacity;
-                    cp.style.stroke = color;
+                    cp.style.stroke = '#09090b';
                     cp.style.strokeWidth = "0.8";
-                    cp.style.filter = "url(#glow)";
+                    cp.style.filter = '';
                 });
             } else {
                 childPaths.forEach(cp => {
@@ -241,9 +221,9 @@ export function syncMapHighlight() {
                 childPaths.forEach(cp => {
                     cp.style.fill = color;
                     cp.style.fillOpacity = opacity;
-                    cp.style.stroke = color;
+                    cp.style.stroke = '#09090b';
                     cp.style.strokeWidth = "0.8";
-                    cp.style.filter = "url(#glow)";
+                    cp.style.filter = '';
                 });
             } else {
                 childPaths.forEach(cp => {
@@ -343,6 +323,13 @@ export async function createCustomExercise() {
     await loadExercisesInSelect();
     await loadAllExercisesList();
     await loadRoutinesInSelectors();
+    try {
+        await updateStatistics();
+        await loadWorkoutHistory();
+        buildActiveSessionUI();
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 export async function editExercise(id) {
@@ -670,6 +657,13 @@ export async function deleteExercise(id, isCustom) {
     await loadExercisesInSelect();
     await loadAllExercisesList();
     await loadRoutinesInSelectors();
+    try {
+        await updateStatistics();
+        await loadWorkoutHistory();
+        buildActiveSessionUI();
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 // Привязка к window для поддержки вызовов из HTML
