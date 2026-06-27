@@ -89,3 +89,15 @@ button:focus, select:focus, input:focus, textarea:focus {
   outline: none !important;
   box-shadow: none !important;
 }
+
+.muscle-path path {
+  transition: fill 0.25s ease, fill-opacity 0.25s ease, stroke 0.15s ease;
+}
+
+.stats-muscle-path path {
+  transition: fill 0.3s ease, fill-opacity 0.3s ease;
+}
+
+.anatomy-lines {
+  pointer-events: none;
+}
