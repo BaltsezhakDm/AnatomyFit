@@ -1,6 +1,8 @@
 import { db, getBodyWeight } from './db.js';
 import { showToast, showConfirm } from './ui.js';
 import { MUSCLE_NAMES, updateStatistics } from './stats.js';
+import { calculate1RM, getEffectiveWeight } from './core/exercise.js';
+import { normalizeLoads as _normalizeLoads, loadsToFractions } from './core/loads.js';
 import { loadRoutinesInSelectors } from './programs.js';
 import { buildActiveSessionUI, loadWorkoutHistory } from './workout.js';
 
@@ -100,22 +102,9 @@ function updateTotalLoadIndicator() {
 }
 
 export function normalizeLoads() {
-    const sum = Object.values(activeLoads).reduce((a, b) => a + b, 0);
-    if (sum === 0) return;
-
-    for (const key of Object.keys(activeLoads)) {
-        activeLoads[key] = Math.round((activeLoads[key] / sum) * 100);
-    }
-
-    let newSum = Object.values(activeLoads).reduce((a, b) => a + b, 0);
-    if (newSum !== 100 && newSum > 0) {
-        const diff = 100 - newSum;
-        const keys = Object.keys(activeLoads);
-        if (keys.length > 0) {
-            activeLoads[keys[0]] += diff;
-        }
-    }
-
+    const normalized = _normalizeLoads(activeLoads);
+    for (const k of Object.keys(activeLoads)) delete activeLoads[k];
+    Object.assign(activeLoads, normalized);
     renderSliders();
     syncMapHighlight();
 }
@@ -250,10 +239,7 @@ export async function createCustomExercise() {
         normalizeLoads();
     }
 
-    const muscleLoads = {};
-    for (const [k, v] of Object.entries(activeLoads)) {
-        muscleLoads[k] = parseFloat((v / 100).toFixed(3));
-    }
+    const muscleLoads = loadsToFractions(activeLoads);
 
     const sortedMuscles = Object.entries(muscleLoads).sort((a, b) => b[1] - a[1]);
     const primaryMuscle = sortedMuscles[0] ? sortedMuscles[0][0] : '';
@@ -602,12 +588,11 @@ export async function toggleExerciseHistory(id) {
     `;
 
     const bodyWeight = getBodyWeight();
-    const getEffectiveWeight = (w) => w + (ex.usesBodyweight ? bodyWeight : 0);
 
     const logsByDate = {};
     logs.forEach(log => {
-        const effW = getEffectiveWeight(log.weight);
-        const oneRM = effW * (1 + log.reps / 30);
+        const effW = getEffectiveWeight(log.weight, ex.usesBodyweight, bodyWeight);
+        const oneRM = calculate1RM(effW, log.reps);
         if (!logsByDate[log.date] || oneRM > logsByDate[log.date]) {
             logsByDate[log.date] = oneRM;
         }

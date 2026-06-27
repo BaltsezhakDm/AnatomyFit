@@ -1,4 +1,7 @@
 import { db, getBodyWeight } from './db.js';
+import { getEffectiveWeight, getExerciseLoads } from './core/exercise.js';
+import { getRollingPeriods } from './core/periods.js';
+export { getRollingPeriods };
 
 // Глобальная переменная текущего режима отображения статистики ('sets' или 'tonnage')
 export let statsMode = 'sets';
@@ -48,39 +51,6 @@ export const MUSCLE_WEEKLY_TARGETS = {
 let muscleChart = null;
 let historyChart = null;
 
-// УМНЫЙ РАСЧЕТ ДВУХ СКОЛЬЗЯЩИХ ПЕРИОДОВ ПО 7 ДНЕЙ
-export function getRollingPeriods() {
-    const now = new Date();
-
-    const formatDate = (d) => {
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const date = String(d.getDate()).padStart(2, '0');
-        return `${year}-${month}-${date}`;
-    };
-
-    const formatDisplayDate = (d) => {
-        return `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')}`;
-    };
-
-    const currentEnd = new Date(now);
-    const currentStart = new Date(now);
-    currentStart.setDate(now.getDate() - 6);
-
-    const prevEnd = new Date(now);
-    prevEnd.setDate(now.getDate() - 7);
-    const prevStart = new Date(now);
-    prevStart.setDate(now.getDate() - 13);
-
-    return {
-        currentStart: formatDate(currentStart),
-        currentEnd: formatDate(currentEnd),
-        prevStart: formatDate(prevStart),
-        prevEnd: formatDate(prevEnd),
-        currentRange: `${formatDisplayDate(currentStart)} - ${formatDisplayDate(currentEnd)}`,
-        prevRange: `${formatDisplayDate(prevStart)} - ${formatDisplayDate(prevEnd)}`
-    };
-}
 
 export function setStatsMode(mode) {
     statsMode = mode;
@@ -143,12 +113,12 @@ export async function updateStatistics() {
     } else {
         const currentWeekVolume = currentWeekLogs.reduce((sum, log) => {
             const ex = exerciseMap[log.exerciseId];
-            const effW = log.weight + (ex && ex.usesBodyweight ? bodyWeight : 0);
+            const effW = getEffectiveWeight(log.weight, ex && ex.usesBodyweight, bodyWeight);
             return sum + (effW * log.reps);
         }, 0);
         const prevWeekVolume = prevWeekLogs.reduce((sum, log) => {
             const ex = exerciseMap[log.exerciseId];
-            const effW = log.weight + (ex && ex.usesBodyweight ? bodyWeight : 0);
+            const effW = getEffectiveWeight(log.weight, ex && ex.usesBodyweight, bodyWeight);
             return sum + (effW * log.reps);
         }, 0);
 
@@ -176,29 +146,14 @@ export async function updateStatistics() {
             const ex = exerciseMap[log.exerciseId];
             if (!ex) return;
 
-            // Если есть muscleLoads, используем его, иначе делаем фолбек на старые поля
-            const loads = ex.muscleLoads || {
-                [ex.primaryMuscle]: 1.0,
-                ...(ex.secondaryMuscle ? { [ex.secondaryMuscle]: ex.secondaryCoeff || 0.5 } : {}),
-                ...(ex.tertiaryMuscle ? { [ex.tertiaryMuscle]: ex.tertiaryCoeff || 0.3 } : {})
-            };
-
-            // Нормализуем фолбек, если сумма не равна 1.0
-            if (!ex.muscleLoads) {
-                const sum = Object.values(loads).reduce((a, b) => a + b, 0);
-                if (sum > 0) {
-                    for (const k of Object.keys(loads)) {
-                        loads[k] = loads[k] / sum;
-                    }
-                }
-            }
+            const loads = getExerciseLoads(ex);
 
             for (const [muscle, coeff] of Object.entries(loads)) {
                 if (targetObj[muscle] !== undefined) {
                     if (statsMode === 'sets') {
                         targetObj[muscle] += coeff;
                     } else {
-                        const effW = log.weight + (ex.usesBodyweight ? bodyWeight : 0);
+                        const effW = getEffectiveWeight(log.weight, ex.usesBodyweight, bodyWeight);
                         targetObj[muscle] += effW * log.reps * coeff;
                     }
                 }
@@ -229,7 +184,7 @@ export async function updateStatistics() {
         } else {
             const volumeSum = daysLogs.reduce((sum, l) => {
                 const ex = exerciseMap[l.exerciseId];
-                const effW = l.weight + (ex && ex.usesBodyweight ? bodyWeight : 0);
+                const effW = getEffectiveWeight(l.weight, ex && ex.usesBodyweight, bodyWeight);
                 return sum + (effW * l.reps);
             }, 0);
             dayValues.push(volumeSum);
@@ -474,21 +429,7 @@ export async function showMuscleDrilldown(muscleKey) {
         const ex = exerciseMap[log.exerciseId];
         if (!ex) return;
 
-        const loads = ex.muscleLoads || {
-            [ex.primaryMuscle]: 1.0,
-            ...(ex.secondaryMuscle ? { [ex.secondaryMuscle]: ex.secondaryCoeff || 0.5 } : {}),
-            ...(ex.tertiaryMuscle ? { [ex.tertiaryMuscle]: ex.tertiaryCoeff || 0.3 } : {})
-        };
-
-        // Нормализуем фолбек, если сумма не равна 1.0
-        if (!ex.muscleLoads) {
-            const sum = Object.values(loads).reduce((a, b) => a + b, 0);
-            if (sum > 0) {
-                for (const k of Object.keys(loads)) {
-                    loads[k] = loads[k] / sum;
-                }
-            }
-        }
+        const loads = getExerciseLoads(ex);
 
         const coeff = loads[muscleKey] || 0;
 
@@ -514,7 +455,7 @@ export async function showMuscleDrilldown(muscleKey) {
             if (statsMode === 'sets') {
                 contribution[log.exerciseId].value += coeff;
             } else {
-                const effW = log.weight + (ex.usesBodyweight ? bodyWeight : 0);
+                const effW = getEffectiveWeight(log.weight, ex.usesBodyweight, bodyWeight);
                 contribution[log.exerciseId].value += effW * log.reps * coeff;
             }
         }

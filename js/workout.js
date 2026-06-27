@@ -1,5 +1,7 @@
 import { db, getBodyWeight } from './db.js';
-import { updateStatistics, MUSCLE_NAMES, getRollingPeriods } from './stats.js';
+import { updateStatistics, MUSCLE_NAMES } from './stats.js';
+import { getEffectiveWeight } from './core/exercise.js';
+import { getProgressionAdvice } from './core/progression.js';
 import { showToast, showConfirm, switchTab } from './ui.js';
 
 export let activeSession = null;
@@ -215,41 +217,22 @@ export async function updateProgressionAdvice(exerciseId) {
 
     const allLogs = await db.workoutLogs.where('exerciseId').equals(exerciseId).toArray();
 
-    if (allLogs.length === 0) {
+    const bodyWeight = getBodyWeight();
+    const advice = getProgressionAdvice(allLogs, ex, bodyWeight);
+
+    if (advice.type === 'first_time') {
         prevBestText.innerText = "Первый раз";
-        adviceText.innerHTML = `🌟 <strong>Первое знакомство!</strong> Это упражнение выполняется впервые. 
+        adviceText.innerHTML = `🌟 <strong>Первое знакомство!</strong> Это упражнение выполняется впервые.
     <br>Подберите вес для ориентировочной работы в диапазоне <strong>8–12 чистых повторений</strong> с запасом в 1–2 повторения (RIR).`;
         return;
     }
 
-    const dates = [...new Set(allLogs.map(l => l.date))].sort();
-    const todayStr = new Date().toISOString().split('T')[0];
-    let lastTrainingDate = dates[dates.length - 1];
-    if (lastTrainingDate === todayStr && dates.length > 1) {
-        lastTrainingDate = dates[dates.length - 2];
-    }
-
-    const lastSessionLogs = allLogs.filter(l => l.date === lastTrainingDate);
-
-    let bestSet = null;
-    let max1RM = 0;
-    const bodyWeight = getBodyWeight();
-    const getEffectiveWeight = (w) => w + (ex.usesBodyweight ? bodyWeight : 0);
-
-    lastSessionLogs.forEach(set => {
-        const effW = getEffectiveWeight(set.weight);
-        const oneRM = effW * (1 + set.reps / 30);
-        if (oneRM > max1RM) {
-            max1RM = oneRM;
-            bestSet = set;
-        }
-    });
-
-    if (!bestSet) {
+    if (advice.type === 'no_data') {
         adviceText.innerText = "История отсутствует.";
         return;
     }
 
+    const { lastTrainingDate, bestSet, max1RM, progression } = advice;
     const dateObj = new Date(lastTrainingDate);
     const formattedDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 
@@ -257,9 +240,9 @@ export async function updateProgressionAdvice(exerciseId) {
 
     const lastW = bestSet.weight;
     const lastR = bestSet.reps;
-    const nextWeight = lastW + 2.5;
-    const targetRepsMin = Math.max(5, lastR - 2);
-    const targetRepsMax = lastR;
+    const nextWeight = progression.priorityWeight;
+    const targetRepsMin = progression.targetRepsMin;
+    const targetRepsMax = progression.targetRepsMax;
 
     let lastWeightDesc = `${lastW} кг`;
     if (ex.usesBodyweight) {
@@ -662,7 +645,7 @@ export async function loadWorkoutHistory() {
 
         const totalTonnage = session.logs.reduce((sum, log) => {
             const ex = exerciseMap[log.exerciseId];
-            const effW = log.weight + (ex && ex.usesBodyweight ? bodyWeight : 0);
+            const effW = getEffectiveWeight(log.weight, ex && ex.usesBodyweight, bodyWeight);
             return sum + (effW * log.reps);
         }, 0);
 
