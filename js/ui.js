@@ -1,4 +1,3 @@
-console.log("js/ui.js: script started execution");
 import { db, DEFAULT_EXERCISES, DEFAULT_PROGRAMS, getBodyWeight } from './db.js';
 import { updateStatistics, MUSCLE_NAMES } from './stats.js';
 import { loadRoutinesInSelectors } from './programs.js';
@@ -185,44 +184,14 @@ export function saveBodyWeight() {
     }
 }
 
-function setupSliders() {
-    const secSlider = document.getElementById('custom-secondary-coeff');
-    const secLabel = document.getElementById('coeff-sec-label');
-    if (secSlider && secLabel) {
-        secSlider.addEventListener('input', () => {
-            secLabel.innerText = Math.round(secSlider.value * 100) + '%';
-        });
-    }
-
-    const tertSlider = document.getElementById('custom-tertiary-coeff');
-    const tertLabel = document.getElementById('coeff-tert-label');
-    if (tertSlider && tertLabel) {
-        tertSlider.addEventListener('input', () => {
-            tertLabel.innerText = Math.round(tertSlider.value * 100) + '%';
-        });
-    }
-}
-
 function populateMuscleSelectors() {
-    const primarySelect = document.getElementById('custom-primary');
-    const secondarySelect = document.getElementById('custom-secondary');
-    const tertiarySelect = document.getElementById('custom-tertiary');
     const filterSelect = document.getElementById('exercise-filter-muscle');
+    if (!filterSelect) return;
 
-    if (!primarySelect) return;
-
-    let optionsHtml = '';
-    for (const [key, value] of Object.entries(MUSCLE_NAMES)) {
-        optionsHtml += `<option value="${key}">${value}</option>`;
-    }
-
-    primarySelect.innerHTML = optionsHtml;
-    secondarySelect.innerHTML = '<option value="">-- Нет синергиста --</option>' + optionsHtml;
-    tertiarySelect.innerHTML = '<option value="">-- Нет стабилизатора --</option>' + optionsHtml;
-
-    if (filterSelect) {
-        filterSelect.innerHTML = '<option value="">Все мышцы</option>' + optionsHtml;
-    }
+    const optionsHtml = Object.entries(MUSCLE_NAMES)
+        .map(([key, value]) => `<option value="${key}">${value}</option>`)
+        .join('');
+    filterSelect.innerHTML = '<option value="">Все мышцы</option>' + optionsHtml;
 }
 
 function initPWA() {
@@ -233,19 +202,13 @@ function initPWA() {
 
 // Запуск при загрузке документа
 window.addEventListener('DOMContentLoaded', async () => {
-    console.log("js/ui.js: DOMContentLoaded event fired");
     try {
-        console.log("js/ui.js: initializing icons...");
         lucide.createIcons();
-        setupSliders();
 
-        console.log("js/ui.js: checking database defaults...");
         if (await db.exercises.count() === 0) {
-            console.log("js/ui.js: db.exercises is empty, adding defaults");
             await db.exercises.bulkAdd(DEFAULT_EXERCISES);
         }
         if (await db.programs.count() === 0) {
-            console.log("js/ui.js: db.programs is empty, adding defaults");
             await db.programs.bulkAdd(DEFAULT_PROGRAMS);
         }
 
@@ -254,33 +217,16 @@ window.addEventListener('DOMContentLoaded', async () => {
             bwInput.value = getBodyWeight();
         }
 
-        console.log("js/ui.js: populating selectors and loading data...");
         populateMuscleSelectors();
-
-        console.log("js/ui.js: calling loadRoutinesInSelectors...");
         await loadRoutinesInSelectors();
-
-        console.log("js/ui.js: calling loadExercisesInSelect...");
         await loadExercisesInSelect();
-
-        console.log("js/ui.js: calling loadAllExercisesList...");
         await loadAllExercisesList();
-
-        console.log("js/ui.js: calling updateStatistics...");
         await updateStatistics();
-
-        console.log("js/ui.js: calling loadWorkoutHistory...");
         await loadWorkoutHistory();
-
-        console.log("js/ui.js: restoring session from storage...");
         restoreSessionFromStorage();
-
-        console.log("js/ui.js: initializing PWA...");
         initPWA();
-
-        console.log("js/ui.js: DOMContentLoaded initialization completed successfully");
     } catch (e) {
-        console.error("js/ui.js: ERROR during DOMContentLoaded initialization:", e);
+        console.error("DOMContentLoaded initialization error:", e);
     }
 });
 
@@ -359,4 +305,3 @@ window.exportDataCSV = exportDataCSV;
 window.importData = importData;
 window.confirmClearAll = confirmClearAll;
 window.saveBodyWeight = saveBodyWeight;
-console.log("js/ui.js: script successfully finished execution");

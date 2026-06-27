@@ -1,4 +1,3 @@
-console.log("js/workout.js: script started execution");
 import { db, getBodyWeight } from './db.js';
 import { updateStatistics, MUSCLE_NAMES, getRollingPeriods } from './stats.js';
 import { showToast, showConfirm, switchTab } from './ui.js';
@@ -8,16 +7,11 @@ export let activeSession = null;
 let wakeLock = null;
 
 async function requestWakeLock() {
-    if (!('wakeLock' in navigator)) {
-        console.log("Wake Lock API not supported by this browser");
-        return;
-    }
+    if (!('wakeLock' in navigator)) return;
     try {
         if (wakeLock) return;
         wakeLock = await navigator.wakeLock.request('screen');
-        console.log("Wake Lock acquired successfully");
         wakeLock.addEventListener('release', () => {
-            console.log("Wake Lock was released");
             wakeLock = null;
         });
     } catch (err) {
@@ -622,22 +616,16 @@ export function getSessionName(sessionExerciseIds, programs) {
 }
 
 export async function loadWorkoutHistory() {
-    console.log("js/workout.js: loadWorkoutHistory called");
     const historyList = document.getElementById('workout-history-list');
-    if (!historyList) {
-        console.warn("js/workout.js: loadWorkoutHistory: workout-history-list container not found");
-        return;
-    }
+    if (!historyList) return;
 
     const logs = await db.workoutLogs.toArray();
-    console.log(`js/workout.js: loadWorkoutHistory: fetched ${logs.length} logs from Dexie DB`);
     const exercises = await db.exercises.toArray();
     const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
     const programs = await db.programs.toArray();
     const bodyWeight = getBodyWeight();
 
     if (logs.length === 0) {
-        console.log("js/workout.js: loadWorkoutHistory: logs is empty");
         historyList.innerHTML = `
         <div class="text-center py-8 text-zinc-500 text-xs bg-brand-card rounded-xl border border-zinc-800 border-dashed">
             История тренировок пуста. Завершите свою первую тренировку!
@@ -661,7 +649,6 @@ export async function loadWorkoutHistory() {
     });
 
     const sortedSessions = Object.values(sessions).sort((a, b) => b.date.localeCompare(a.date));
-    console.log(`js/workout.js: loadWorkoutHistory: unique sessions computed:`, sortedSessions.map(s => ({ key: s.key, date: s.date, logCount: s.logs.length })));
 
     historyList.innerHTML = sortedSessions.map(session => {
         const sessionExerciseIds = [...new Set(session.logs.map(l => l.exerciseId))];
@@ -682,7 +669,7 @@ export async function loadWorkoutHistory() {
         const sessIdStr = session.sessionId ? `'${session.sessionId}'` : 'null';
 
         return `
-        <div onclick="console.log('History item clicked! sessionId:', ${sessIdStr}, 'date:', '${session.date}'); window.showWorkoutDetails(${sessIdStr}, '${session.date}')" 
+        <div onclick="window.showWorkoutDetails(${sessIdStr}, '${session.date}')"
              class="bg-brand-card p-3.5 rounded-xl border border-zinc-800/30 flex items-center justify-between hover:border-zinc-700/50 active:scale-[0.98] transition duration-150 cursor-pointer">
             <div class="space-y-0.5">
                 <span class="text-[9px] text-brand uppercase font-extrabold tracking-wider block">${sessionName}</span>
@@ -700,7 +687,6 @@ export async function loadWorkoutHistory() {
         </div>
     `;
     }).join('');
-    console.log("js/workout.js: loadWorkoutHistory: finished rendering list");
 }
 
 export let isEditingWorkoutSession = false;
@@ -709,7 +695,6 @@ export let editingSessionDate = '';
 export let editingSessionId = null;
 
 export async function showWorkoutDetails(sessionId, date) {
-    console.log("js/workout.js: showWorkoutDetails entered with", { sessionId, date });
     if (sessionId === 'null' || sessionId === 'undefined') {
         sessionId = null;
     }
@@ -730,47 +715,26 @@ export async function showWorkoutDetails(sessionId, date) {
     const dateEl = document.getElementById('detail-modal-date');
     const logsEl = document.getElementById('detail-modal-logs');
 
-    console.log("js/workout.js: showWorkoutDetails UI elements:", {
-        dateText: !!dateText,
-        dateInput: !!dateInput,
-        viewFooter: !!viewFooter,
-        editFooter: !!editFooter,
-        modal: !!modal,
-        titleEl: !!titleEl,
-        dateEl: !!dateEl,
-        logsEl: !!logsEl
-    });
-
     if (dateText) dateText.classList.remove('hidden');
     if (dateInput) dateInput.classList.add('hidden');
     if (viewFooter) viewFooter.classList.remove('hidden');
     if (editFooter) editFooter.classList.add('hidden');
 
-    if (!modal || !logsEl) {
-        console.warn("js/workout.js: showWorkoutDetails: modal or logs container is missing!");
-        return;
-    }
+    if (!modal || !logsEl) return;
 
     let sessionLogs = [];
     if (sessionId) {
-        console.log("js/workout.js: showWorkoutDetails: querying logs by sessionId:", sessionId);
         sessionLogs = await db.workoutLogs.where('sessionId').equals(sessionId).toArray();
-        console.log(`js/workout.js: showWorkoutDetails: found ${sessionLogs.length} logs`);
         // Защита от несовпадения типов (строка/число)
         if (sessionLogs.length === 0) {
-            console.log("js/workout.js: showWorkoutDetails: logs length is 0, trying fallback types");
             if (typeof sessionId === 'number') {
                 sessionLogs = await db.workoutLogs.where('sessionId').equals(String(sessionId)).toArray();
-                console.log(`js/workout.js: showWorkoutDetails fallback String: found ${sessionLogs.length} logs`);
             } else if (typeof sessionId === 'string') {
                 sessionLogs = await db.workoutLogs.where('sessionId').equals(Number(sessionId)).toArray();
-                console.log(`js/workout.js: showWorkoutDetails fallback Number: found ${sessionLogs.length} logs`);
             }
         }
     } else {
-        console.log("js/workout.js: showWorkoutDetails: querying logs by date:", date, "with no sessionId");
         sessionLogs = await db.workoutLogs.where('date').equals(date).filter(l => !l.sessionId || l.sessionId === 'null' || l.sessionId === 'undefined').toArray();
-        console.log(`js/workout.js: showWorkoutDetails for date: found ${sessionLogs.length} logs`);
     }
 
     const exercises = await db.exercises.toArray();
@@ -779,7 +743,6 @@ export async function showWorkoutDetails(sessionId, date) {
 
     const sessionExerciseIds = [...new Set(sessionLogs.map(l => l.exerciseId))];
     const sessionName = getSessionName(sessionExerciseIds, programs);
-    console.log("js/workout.js: showWorkoutDetails: session name computed:", sessionName);
 
     const dateObj = new Date(date);
     const formattedDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -823,7 +786,6 @@ export async function showWorkoutDetails(sessionId, date) {
     }).join('');
 
     modal.classList.remove('hidden');
-    console.log("js/workout.js: showWorkoutDetails: modal visible, calling lucide.createIcons()");
     lucide.createIcons();
 }
 
@@ -1117,4 +1079,3 @@ window.cancelWorkoutSessionEdits = cancelWorkoutSessionEdits;
 window.saveWorkoutSessionEdits = saveWorkoutSessionEdits;
 window.cancelWorkoutSession = cancelWorkoutSession;
 window.finishWorkoutSession = finishWorkoutSession;
-console.log("js/workout.js: script successfully finished execution");

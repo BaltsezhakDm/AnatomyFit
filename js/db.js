@@ -1,7 +1,5 @@
-console.log("js/db.js: script started execution");
 // Инициализация базы данных Dexie
 export const db = new Dexie('AnatomyFitDB_v3');
-console.log("js/db.js: Dexie instance created:", db);
 
 // Версия 3 для обратной совместимости
 db.version(3).stores({
@@ -9,7 +7,6 @@ db.version(3).stores({
     workoutLogs: '++id, date, exerciseId, weight, reps, sessionId',
     programs: '++id, name, exerciseIds'
 });
-console.log("js/db.js: Schema version 3 configured");
 
 // Версия 4 с поддержкой usesBodyweight
 db.version(4).stores({
@@ -63,7 +60,7 @@ db.version(5).stores({
         }
     });
 });
-console.log("js/db.js: Schema version 5 configured with muscleLoads migration support");
+
 
 export const DEFAULT_EXERCISES = [
     { name: 'Жим лежа на горизонтальной скамье', primaryMuscle: 'chest', secondaryMuscle: 'front_delts', secondaryCoeff: 0.6, tertiaryMuscle: 'triceps', tertiaryCoeff: 0.5, isCustom: 0, usesBodyweight: 0, muscleLoads: { chest: 0.50, front_delts: 0.30, triceps: 0.20 } },
@@ -88,8 +85,5 @@ export const DEFAULT_PROGRAMS = [
 ];
 
 export function getBodyWeight() {
-    const w = parseFloat(localStorage.getItem('anatomyfit_bodyweight')) || 75.0;
-    console.log("js/db.js: getBodyWeight requested, returning:", w);
-    return w;
+    return parseFloat(localStorage.getItem('anatomyfit_bodyweight')) || 75.0;
 }
-console.log("js/db.js: script successfully finished execution");

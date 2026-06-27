@@ -1205,13 +1205,6 @@
     </div>
 
     <script>
-        console.log("=== AnatomyFit PWA Boot Diagnostics ===");
-        console.log("Current URL:", window.location.href);
-        console.log("Protocol:", window.location.protocol);
-        console.log("User Agent:", navigator.userAgent);
-        console.log("IndexedDB Support:", typeof indexedDB !== 'undefined');
-        console.log("Service Worker Support:", 'serviceWorker' in navigator);
-
         window.addEventListener('error', function (event) {
             console.error("!!! UNCAUGHT RUNTIME ERROR !!!");
             console.error("Message:", event.message);

@@ -1,4 +1,3 @@
-console.log("js/stats.js: script started execution");
 import { db, getBodyWeight } from './db.js';
 
 // Глобальная переменная текущего режима отображения статистики ('sets' или 'tonnage')
@@ -578,10 +577,6 @@ export function closeMuscleDrilldown() {
     if (modal) modal.classList.add('hidden');
 }
 
-export function toggleStatsBodyView(view) {
-    // No-op: Обе стороны тела теперь отображаются одновременно на тепловой карте
-}
-
 export function updateMuscleHeatmap(currentData) {
     const paths = document.querySelectorAll('.stats-muscle-path');
     const maxValue = Math.max(...Object.values(currentData)) || 1;
@@ -643,6 +638,4 @@ export function updateMuscleHeatmap(currentData) {
 window.setStatsMode = setStatsMode;
 window.showMuscleDrilldown = showMuscleDrilldown;
 window.closeMuscleDrilldown = closeMuscleDrilldown;
-window.toggleStatsBodyView = toggleStatsBodyView;
 window.updateMuscleHeatmap = updateMuscleHeatmap;
-console.log("js/stats.js: script successfully finished execution");

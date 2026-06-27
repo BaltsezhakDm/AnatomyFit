@@ -1,4 +1,3 @@
-console.log("js/exercises.js: script started execution");
 import { db, getBodyWeight } from './db.js';
 import { showToast, showConfirm } from './ui.js';
 import { MUSCLE_NAMES, updateStatistics } from './stats.js';
@@ -29,7 +28,6 @@ export const MUSCLE_COLORS = {
 };
 
 export async function loadExercisesInSelect() {
-    console.log("js/exercises.js: loadExercisesInSelect called");
     const select = document.getElementById('active-exercise-select');
     if (!select) return;
     const list = await db.exercises.toArray();
@@ -40,12 +38,7 @@ export async function loadExercisesInSelect() {
     `).join('');
 }
 
-export function toggleBodyView(view) {
-    // No-op: Обе стороны тела теперь отображаются одновременно бок о бок в конструкторе упражнений
-}
-
 export function selectMuscleOnMap(muscleKey) {
-    console.log("js/exercises.js: selectMuscleOnMap clicked:", muscleKey);
     
     if (muscleKey === 'delts') {
         // Циклическое переключение дельт
@@ -107,7 +100,6 @@ function updateTotalLoadIndicator() {
 }
 
 export function normalizeLoads() {
-    console.log("js/exercises.js: normalizeLoads triggered");
     const sum = Object.values(activeLoads).reduce((a, b) => a + b, 0);
     if (sum === 0) return;
 
@@ -425,12 +417,6 @@ export async function editExercise(id) {
         if (frontKeys.includes(key)) frontScore += activeLoads[key];
         else backScore += activeLoads[key];
     }
-    if (backScore > frontScore) {
-        toggleBodyView('back');
-    } else {
-        toggleBodyView('front');
-    }
-
     const formTitle = document.getElementById('custom-exercise-form-title');
     if (formTitle) formTitle.innerHTML = `<i data-lucide="edit-3" class="w-5 h-5 text-brand"></i> Редактирование техники`;
 
@@ -457,7 +443,6 @@ export function cancelEditExercise() {
     activeLoads = {};
     renderSliders();
     syncMapHighlight();
-    toggleBodyView('front');
 
     const formTitle = document.getElementById('custom-exercise-form-title');
     if (formTitle) formTitle.innerHTML = `<i data-lucide="fingerprint" class="w-5 h-5 text-brand"></i> Анатомический конструктор`;
@@ -714,9 +699,6 @@ window.cancelEditExercise = cancelEditExercise;
 window.toggleExerciseHistory = toggleExerciseHistory;
 window.deleteExercise = deleteExercise;
 window.loadAllExercisesList = loadAllExercisesList;
-window.toggleBodyView = toggleBodyView;
 window.selectMuscleOnMap = selectMuscleOnMap;
 window.updateMuscleLoad = updateMuscleLoad;
 window.normalizeLoads = normalizeLoads;
-
-console.log("js/exercises.js: script successfully finished execution");

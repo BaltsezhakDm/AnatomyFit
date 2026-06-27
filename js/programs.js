@@ -1,4 +1,3 @@
-console.log("js/programs.js: script started execution");
 import { db } from './db.js';
 import { showToast, showConfirm, switchTab } from './ui.js';
 import { startWorkoutSession, loadWorkoutHistory } from './workout.js';
@@ -228,4 +227,3 @@ window.editRoutine = editRoutine;
 window.cancelEditRoutine = cancelEditRoutine;
 window.deleteRoutine = deleteRoutine;
 window.startRoutineFromCard = startRoutineFromCard;
-console.log("js/programs.js: script successfully finished execution");
