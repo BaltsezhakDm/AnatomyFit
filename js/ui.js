@@ -3,6 +3,7 @@ import { updateStatistics, MUSCLE_NAMES } from './stats.js';
 import { loadRoutinesInSelectors } from './programs.js';
 import { loadExercisesInSelect, loadAllExercisesList } from './exercises.js';
 import { buildActiveSessionUI, restoreSessionFromStorage, loadWorkoutHistory, setActiveSession, getSessionName } from './workout.js';
+import { getEffectiveWeight } from './core/exercise.js';
 
 export let pendingConfirmResolve = null;
 
@@ -269,8 +270,7 @@ export async function exportDataCSV() {
             const progName = sessionNames[sessionKey] || 'Свободная тренировка';
             const muscleName = MUSCLE_NAMES[ex.primaryMuscle] || ex.primaryMuscle || 'Неизвестно';
             
-            const effWeight = log.weight + (ex.usesBodyweight ? bodyWeight : 0);
-            const tonnage = effWeight * log.reps;
+            const tonnage = getEffectiveWeight(log.weight, ex.usesBodyweight, bodyWeight) * log.reps;
 
             const safeName = ex.name.replace(/;/g, ',');
             const safeProgName = progName.replace(/;/g, ',');
