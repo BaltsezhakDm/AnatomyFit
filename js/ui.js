@@ -4,6 +4,8 @@ import { loadRoutinesInSelectors } from './programs.js';
 import { loadExercisesInSelect, loadAllExercisesList } from './exercises.js';
 import { buildActiveSessionUI, restoreSessionFromStorage, loadWorkoutHistory, setActiveSession, getSessionName } from './workout.js';
 import { getEffectiveWeight } from './core/exercise.js';
+import { createIcons, icons } from 'lucide';
+window.lucide = { createIcons: () => createIcons({ icons }) };
 
 export let pendingConfirmResolve = null;
 
@@ -196,9 +198,7 @@ function populateMuscleSelectors() {
 }
 
 function initPWA() {
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js').catch(() => { });
-    }
+    // Service Worker is registered automatically by vite-plugin-pwa
 }
 
 // Запуск при загрузке документа

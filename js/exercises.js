@@ -1,3 +1,4 @@
+import Chart from 'chart.js/auto';
 import { db, getBodyWeight } from './db.js';
 import { showToast, showConfirm } from './ui.js';
 import { MUSCLE_NAMES, updateStatistics } from './stats.js';

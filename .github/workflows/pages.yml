@@ -14,14 +14,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare `public` directory
-        run: |
-          mkdir -p public
-          rsync -av --exclude='.git' --exclude='.github' --exclude='node_modules' ./ public/
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v3
         with:
-          publish_dir: ./public
+          publish_dir: ./dist
           publish_branch: gh-pages
           github_token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,3 +1,4 @@
+import Chart from 'chart.js/auto';
 import { db, getBodyWeight } from './db.js';
 import { getEffectiveWeight, getExerciseLoads } from './core/exercise.js';
 import { getRollingPeriods } from './core/periods.js';

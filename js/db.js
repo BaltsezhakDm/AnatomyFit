@@ -1,3 +1,5 @@
+import Dexie from 'dexie';
+
 // Инициализация базы данных Dexie
 export const db = new Dexie('AnatomyFitDB_v3');
 
