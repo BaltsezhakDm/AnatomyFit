@@ -89,3 +89,7 @@ export const DEFAULT_PROGRAMS = [
 export function getBodyWeight() {
     return parseFloat(localStorage.getItem('anatomyfit_bodyweight')) || 75.0;
 }
+
+export function getRestDuration() {
+    return parseInt(localStorage.getItem('anatomyfit_rest_duration')) || 90;
+}

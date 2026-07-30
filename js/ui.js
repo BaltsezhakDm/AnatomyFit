@@ -1,4 +1,4 @@
-import { db, DEFAULT_EXERCISES, DEFAULT_PROGRAMS, getBodyWeight } from './db.js';
+import { db, DEFAULT_EXERCISES, DEFAULT_PROGRAMS, getBodyWeight, getRestDuration } from './db.js';
 import { updateStatistics, MUSCLE_NAMES } from './stats.js';
 import { loadRoutinesInSelectors } from './programs.js';
 import { loadExercisesInSelect, loadAllExercisesList } from './exercises.js';
@@ -9,33 +9,55 @@ window.lucide = { createIcons: () => createIcons({ icons }) };
 
 export let pendingConfirmResolve = null;
 
-export function showToast(message, type = 'info') {
+let toastHideTimeout = null;
+let toastUndoHandler = null;
+
+export function showToast(message, type = 'info', onUndo = null) {
     const toast = document.getElementById('toast');
     const toastMsg = document.getElementById('toast-message');
     const toastIcon = document.getElementById('toast-icon');
+    const undoBtn = document.getElementById('toast-undo-btn');
 
     if (!toast || !toastMsg || !toastIcon) return;
 
     toastMsg.innerText = message;
     if (type === 'success') {
         toastIcon.setAttribute('data-lucide', 'check-circle');
-        toastIcon.setAttribute('class', "w-4 h-4 text-emerald-400");
+        toastIcon.setAttribute('class', "w-4 h-4 text-emerald-400 flex-shrink-0");
     } else if (type === 'error') {
         toastIcon.setAttribute('data-lucide', 'alert-triangle');
-        toastIcon.setAttribute('class', "w-4 h-4 text-red-400");
+        toastIcon.setAttribute('class', "w-4 h-4 text-red-400 flex-shrink-0");
     } else {
         toastIcon.setAttribute('data-lucide', 'info');
-        toastIcon.setAttribute('class', "w-4 h-4 text-brand");
+        toastIcon.setAttribute('class', "w-4 h-4 text-brand flex-shrink-0");
     }
     lucide.createIcons();
 
+    if (undoBtn) {
+        toastUndoHandler = onUndo;
+        undoBtn.onclick = () => {
+            if (toastUndoHandler) toastUndoHandler();
+            hideToast();
+        };
+        undoBtn.classList.toggle('hidden', !onUndo);
+    }
+
+    toast.classList.remove('pointer-events-none');
+    toast.classList.add('pointer-events-auto');
     toast.classList.remove('opacity-0', 'translate-y-2');
     toast.classList.add('opacity-100', 'translate-y-0');
 
-    setTimeout(() => {
-        toast.classList.remove('opacity-100', 'translate-y-0');
-        toast.classList.add('opacity-0', 'translate-y-2');
-    }, 3000);
+    if (toastHideTimeout) clearTimeout(toastHideTimeout);
+    toastHideTimeout = setTimeout(hideToast, onUndo ? 5000 : 3000);
+}
+
+function hideToast() {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.classList.remove('opacity-100', 'translate-y-0');
+    toast.classList.add('opacity-0', 'translate-y-2');
+    toast.classList.remove('pointer-events-auto');
+    toast.classList.add('pointer-events-none');
 }
 
 export function showConfirm(text) {
@@ -187,6 +209,15 @@ export function saveBodyWeight() {
     }
 }
 
+export function saveRestDuration() {
+    const input = document.getElementById('user-rest-duration');
+    if (input) {
+        const val = Math.max(10, parseInt(input.value) || 90);
+        localStorage.setItem('anatomyfit_rest_duration', val);
+        showToast(`Таймер отдыха по умолчанию: ${val} сек`, 'success');
+    }
+}
+
 function populateMuscleSelectors() {
     const filterSelect = document.getElementById('exercise-filter-muscle');
     if (!filterSelect) return;
@@ -216,6 +247,10 @@ window.addEventListener('DOMContentLoaded', async () => {
         const bwInput = document.getElementById('user-bodyweight');
         if (bwInput) {
             bwInput.value = getBodyWeight();
+        }
+        const restInput = document.getElementById('user-rest-duration');
+        if (restInput) {
+            restInput.value = getRestDuration();
         }
 
         populateMuscleSelectors();
@@ -305,3 +340,4 @@ window.exportDataCSV = exportDataCSV;
 window.importData = importData;
 window.confirmClearAll = confirmClearAll;
 window.saveBodyWeight = saveBodyWeight;
+window.saveRestDuration = saveRestDuration;

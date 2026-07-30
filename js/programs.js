@@ -5,6 +5,21 @@ import { startWorkoutSession, loadWorkoutHistory } from './workout.js';
 export let selectedExercisesForCreation = [];
 export let editingProgramId = null;
 
+export function openProgramForm() {
+    const wrapper = document.getElementById('program-form-wrapper');
+    const toggleBtn = document.getElementById('btn-toggle-program-form');
+    if (wrapper) wrapper.classList.remove('hidden');
+    if (toggleBtn) toggleBtn.classList.add('hidden');
+}
+
+export function closeProgramForm() {
+    const wrapper = document.getElementById('program-form-wrapper');
+    const toggleBtn = document.getElementById('btn-toggle-program-form');
+    if (wrapper) wrapper.classList.add('hidden');
+    if (toggleBtn) toggleBtn.classList.remove('hidden');
+    cancelEditRoutine();
+}
+
 export async function loadRoutinesInSelectors() {
     const routines = await db.programs.toArray();
     const startSelect = document.getElementById('start-routine-select');
@@ -107,7 +122,6 @@ export async function createNewProgram() {
             exerciseIds: [...selectedExercisesForCreation]
         });
         showToast("Программа обновлена успешно!", "success");
-        cancelEditRoutine();
     } else {
         await db.programs.add({
             name,
@@ -116,14 +130,7 @@ export async function createNewProgram() {
         showToast("Программа создана успешно!", "success");
     }
 
-    if (nameInput) nameInput.value = '';
-    selectedExercisesForCreation = [];
-
-    const buttons = document.querySelectorAll('#program-exercise-selector-pool button');
-    buttons.forEach(b => b.className = "px-2 py-1 bg-zinc-900 border border-zinc-800 hover:border-brand/40 text-[10px] rounded-lg text-zinc-300 transition-all");
-
-    const preview = document.getElementById('selected-exercises-preview');
-    if (preview) preview.innerText = "Упражнения не выбраны. Кликните по упражнениям выше.";
+    closeProgramForm();
 
     await loadRoutinesInSelectors();
     try {
@@ -137,6 +144,8 @@ export async function editRoutine(id) {
     editingProgramId = id;
     const routine = await db.programs.get(id);
     if (!routine) return;
+
+    openProgramForm();
 
     const nameInput = document.getElementById('program-name-input');
     if (nameInput) nameInput.value = routine.name;
@@ -227,3 +236,5 @@ window.editRoutine = editRoutine;
 window.cancelEditRoutine = cancelEditRoutine;
 window.deleteRoutine = deleteRoutine;
 window.startRoutineFromCard = startRoutineFromCard;
+window.openProgramForm = openProgramForm;
+window.closeProgramForm = closeProgramForm;

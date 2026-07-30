@@ -1,4 +1,4 @@
-import { db, getBodyWeight } from './db.js';
+import { db, getBodyWeight, getRestDuration } from './db.js';
 import { updateStatistics, MUSCLE_NAMES } from './stats.js';
 import { getEffectiveWeight } from './core/exercise.js';
 import { getProgressionAdvice } from './core/progression.js';
@@ -55,12 +55,10 @@ export function adjustValue(inputId, delta) {
 
 export async function startWorkoutSession(isFree = false) {
     if (isFree) {
-        const allEx = await db.exercises.toArray();
-        const ids = allEx.map(e => e.id);
         activeSession = {
             type: 'free',
             name: 'Свободная тренировка',
-            exerciseIds: ids,
+            exerciseIds: [],
             sessionId: Date.now() // Убедимся, что sessionId сгенерирован
         };
     } else {
@@ -123,11 +121,31 @@ export async function buildActiveSessionUI() {
     const sessionExercises = activeSession.exerciseIds.map(id => exerciseMap[id]).filter(Boolean);
 
     if (fastButtonsContainer) {
-        fastButtonsContainer.innerHTML = sessionExercises.map(ex => `
-        <button onclick="window.selectActiveExercise(${ex.id})" class="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-xs rounded-xl border border-zinc-800 text-zinc-300 hover:text-brand transition flex items-center gap-1 font-medium">
-            <i data-lucide="dumbbell" class="w-3 h-3 text-zinc-500"></i> ${ex.name}
-        </button>
-    `).join('');
+        if (sessionExercises.length === 0) {
+            fastButtonsContainer.innerHTML = `
+            <div class="text-xs text-zinc-500 italic py-1">Упражнения появятся здесь по мере записи подходов. Выберите первое ниже.</div>
+        `;
+        } else {
+            const sessionLogs = activeSession.sessionId
+                ? await db.workoutLogs.where('sessionId').equals(activeSession.sessionId).toArray()
+                : [];
+            const setCounts = {};
+            sessionLogs.forEach(l => {
+                setCounts[l.exerciseId] = (setCounts[l.exerciseId] || 0) + 1;
+            });
+
+            fastButtonsContainer.innerHTML = sessionExercises.map(ex => {
+                const count = setCounts[ex.id] || 0;
+                const done = count > 0;
+                return `
+            <button onclick="window.selectActiveExercise(${ex.id})" class="px-2.5 py-1.5 ${done ? 'bg-emerald-950/30 border-brand/30 text-zinc-200' : 'bg-zinc-900 border-zinc-800 text-zinc-300'} hover:bg-zinc-800 text-xs rounded-xl border hover:text-brand transition flex items-center gap-1.5 font-medium">
+                <i data-lucide="${done ? 'check-circle-2' : 'dumbbell'}" class="w-3 h-3 ${done ? 'text-brand' : 'text-zinc-500'}"></i>
+                ${ex.name}
+                ${done ? `<span class="text-[9px] font-mono text-brand bg-brand/10 px-1 rounded">${count}</span>` : ''}
+            </button>
+        `;
+            }).join('');
+        }
     }
 
     const select = document.getElementById('active-exercise-select');
@@ -312,8 +330,8 @@ export async function saveActiveSet() {
     await updateStatistics();
     await updateProgressionAdvice(exerciseId);
 
-    // Запускаем таймер отдыха на 90 секунд
-    startRestTimer(90);
+    // Запускаем таймер отдыха на настроенную длительность
+    startRestTimer(getRestDuration());
 }
 
 // Переменные для таймера отдыха
@@ -513,45 +531,63 @@ export async function loadTodayLogs() {
     if (!container) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
-    const logs = await db.workoutLogs.where('date').equals(todayStr).toArray();
+    let logs;
+    if (activeSession && activeSession.sessionId) {
+        logs = await db.workoutLogs.where('sessionId').equals(activeSession.sessionId).toArray();
+    } else {
+        logs = await db.workoutLogs.where('date').equals(todayStr).toArray();
+    }
     const exercises = await db.exercises.toArray();
     const exerciseMap = Object.fromEntries(exercises.map(e => [e.id, e]));
 
     if (logs.length === 0) {
         container.innerHTML = `
         <div class="text-center py-8 text-zinc-500 text-sm bg-brand-card rounded-xl border border-zinc-800 border-dashed">
-            Нет сохраненных подходов за сегодня. Сделайте первый подход!
+            Нет сохраненных подходов за эту тренировку. Сделайте первый подход!
         </div>
     `;
         return;
     }
 
-    logs.reverse();
+    // Группируем подходы по упражнению, сохраняя порядок первого выполнения
+    const order = [];
+    const byExercise = {};
+    logs.forEach(log => {
+        if (!byExercise[log.exerciseId]) {
+            byExercise[log.exerciseId] = [];
+            order.push(log.exerciseId);
+        }
+        byExercise[log.exerciseId].push(log);
+    });
+    order.reverse(); // последнее добавленное упражнение — сверху
 
-    container.innerHTML = logs.map(log => {
-        const ex = exerciseMap[log.exerciseId] || { name: 'Удаленное упражнение', primaryMuscle: 'chest' };
-        const vol = log.weight * log.reps;
+    container.innerHTML = order.map(exId => {
+        const exLogs = byExercise[exId];
+        const ex = exerciseMap[exId] || { name: 'Удаленное упражнение', primaryMuscle: 'chest' };
 
         let details = `Цель: ${MUSCLE_NAMES[ex.primaryMuscle] || ex.primaryMuscle}`;
         if (ex.secondaryMuscle) details += ` | + ${MUSCLE_NAMES[ex.secondaryMuscle] || ex.secondaryMuscle}`;
 
-        return `
-        <div class="bg-brand-card p-3 rounded-xl border border-zinc-800 flex items-center justify-between">
-            <div>
-                <div class="font-bold text-xs text-zinc-200">${ex.name}</div>
-                <div class="text-[9px] text-zinc-400 mt-1 flex items-center gap-2">
-                    <span class="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-brand font-medium">Объем: ${vol} кг</span>
-                    <span>${details}</span>
-                </div>
-            </div>
-            <div class="flex items-center gap-2">
-                <span class="font-mono text-xs font-bold text-zinc-100 bg-zinc-900 px-2 py-1 rounded-lg border border-zinc-800">
-                    ${log.weight} × ${log.reps}
-                </span>
-                <button onclick="window.deleteLog(${log.id})" class="text-zinc-500 hover:text-red-400 transition p-1">
+        const totalVol = exLogs.reduce((sum, l) => sum + l.weight * l.reps, 0);
+
+        const setsHtml = exLogs.map((log, idx) => `
+            <div class="flex items-center gap-2 bg-zinc-900 px-2 py-1.5 rounded-lg border border-zinc-800">
+                <span class="text-[9px] font-mono text-zinc-500 w-3">${idx + 1}</span>
+                <span class="font-mono text-xs font-bold text-zinc-100">${log.weight} × ${log.reps}</span>
+                <button onclick="window.deleteLog(${log.id})" class="text-zinc-500 hover:text-red-400 transition p-2 -m-1" aria-label="Удалить подход">
                     <i data-lucide="trash" class="w-4 h-4"></i>
                 </button>
             </div>
+        `).join('');
+
+        return `
+        <div class="bg-brand-card p-3 rounded-xl border border-zinc-800 space-y-2">
+            <div class="flex items-center justify-between">
+                <div class="font-bold text-xs text-zinc-200">${ex.name}</div>
+                <span class="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-brand text-[9px] font-medium">Объем: ${totalVol} кг</span>
+            </div>
+            <div class="text-[9px] text-zinc-400">${details}</div>
+            <div class="flex flex-wrap gap-1.5">${setsHtml}</div>
         </div>
     `;
     }).join('');
@@ -559,12 +595,7 @@ export async function loadTodayLogs() {
     lucide.createIcons();
 }
 
-export async function deleteLog(id) {
-    const confirm = await showConfirm("Удалить выбранный подход?");
-    if (!confirm) return;
-
-    await db.workoutLogs.delete(id);
-    showToast('Подход удален', 'info');
+async function refreshAfterLogChange() {
     await loadTodayLogs();
     await updateStatistics();
     await loadWorkoutHistory();
@@ -573,6 +604,21 @@ export async function deleteLog(id) {
     if (select && select.value) {
         updateProgressionAdvice(parseInt(select.value));
     }
+}
+
+export async function deleteLog(id) {
+    const log = await db.workoutLogs.get(id);
+    if (!log) return;
+
+    await db.workoutLogs.delete(id);
+    await refreshAfterLogChange();
+
+    showToast('Подход удален', 'info', async () => {
+        const { id: _oldId, ...logData } = log;
+        await db.workoutLogs.add(logData);
+        await refreshAfterLogChange();
+        showToast('Подход восстановлен', 'success');
+    });
 }
 
 export let selectedHistorySessionId = null;
@@ -893,7 +939,7 @@ export async function renderWorkoutDetailsEditMode() {
                                oninput="window.updateEditingSetReps(${log._arrayIndex}, this.value)">
                         <span class="text-[9px] text-zinc-500">раз</span>
                     </div>
-                    <button onclick="window.removeSetFromEditList(${log._arrayIndex})" class="text-zinc-500 hover:text-red-400 p-0.5 transition" title="Удалить подход">
+                    <button onclick="window.removeSetFromEditList(${log._arrayIndex})" class="text-zinc-500 hover:text-red-400 p-2.5 -m-1 transition" aria-label="Удалить подход">
                         <i data-lucide="x" class="w-3.5 h-3.5"></i>
                     </button>
                 </div>

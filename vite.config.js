@@ -8,7 +8,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: [],
+      includeAssets: ['icon.svg'],
       manifest: {
         name: 'AnatomyFit — Аналитика Прогрессии Нагрузок',
         short_name: 'AnatomyFit',
@@ -18,7 +18,19 @@ export default defineConfig({
         display: 'standalone',
         background_color: '#09090b',
         theme_color: '#10b981',
-        icons: []
+        icons: [
+          {
+            src: 'icon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml'
+          },
+          {
+            src: 'icon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'maskable'
+          }
+        ]
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html}'],

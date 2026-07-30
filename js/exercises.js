@@ -11,6 +11,21 @@ export let editingExerciseId = null;
 export let activeExerciseCharts = {};
 export let activeLoads = {}; // Содержит проценты нагрузок: { lats: 40, traps: 35, ... }
 
+export function openExerciseForm() {
+    const wrapper = document.getElementById('exercise-form-wrapper');
+    const toggleBtn = document.getElementById('btn-toggle-exercise-form');
+    if (wrapper) wrapper.classList.remove('hidden');
+    if (toggleBtn) toggleBtn.classList.add('hidden');
+}
+
+export function closeExerciseForm() {
+    const wrapper = document.getElementById('exercise-form-wrapper');
+    const toggleBtn = document.getElementById('btn-toggle-exercise-form');
+    if (wrapper) wrapper.classList.add('hidden');
+    if (toggleBtn) toggleBtn.classList.remove('hidden');
+    cancelEditExercise();
+}
+
 // Уникальные цвета для групп мышц в соответствии с дизайном
 export const MUSCLE_COLORS = {
     chest: '#ef4444',        // Красный
@@ -285,7 +300,6 @@ export async function createCustomExercise() {
 
         savedId = idToUpdate;
         showToast('Упражнение успешно обновлено!', 'success');
-        cancelEditExercise();
     } else {
         const exists = await db.exercises.where('name').equalsIgnoreCase(name).first();
         if (exists) {
@@ -306,14 +320,10 @@ export async function createCustomExercise() {
         });
 
         savedId = newId;
-        if (nameInput) nameInput.value = '';
-        document.getElementById('custom-uses-bodyweight').checked = false;
         showToast('Анатомическая техника записана!', 'success');
-        
-        activeLoads = {};
-        renderSliders();
-        syncMapHighlight();
     }
+
+    closeExerciseForm();
 
     await loadExercisesInSelect();
     await loadAllExercisesList();
@@ -345,6 +355,8 @@ export async function createCustomExercise() {
 }
 
 export async function editExercise(id) {
+    openExerciseForm();
+
     editingExerciseId = id;
     let ex = await db.exercises.get(id);
     if (!ex) {
@@ -682,6 +694,8 @@ export async function deleteExercise(id, isCustom) {
 window.createCustomExercise = createCustomExercise;
 window.editExercise = editExercise;
 window.cancelEditExercise = cancelEditExercise;
+window.openExerciseForm = openExerciseForm;
+window.closeExerciseForm = closeExerciseForm;
 window.toggleExerciseHistory = toggleExerciseHistory;
 window.deleteExercise = deleteExercise;
 window.loadAllExercisesList = loadAllExercisesList;
