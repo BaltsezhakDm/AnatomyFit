@@ -138,11 +138,18 @@ export async function buildActiveSessionUI() {
                 const count = setCounts[ex.id] || 0;
                 const done = count > 0;
                 return `
-            <button onclick="window.selectActiveExercise(${ex.id})" class="px-2.5 py-1.5 ${done ? 'bg-emerald-950/30 border-brand/30 text-zinc-200' : 'bg-zinc-900 border-zinc-800 text-zinc-300'} hover:bg-zinc-800 text-xs rounded-xl border hover:text-brand transition flex items-center gap-1.5 font-medium">
-                <i data-lucide="${done ? 'check-circle-2' : 'dumbbell'}" class="w-3 h-3 ${done ? 'text-brand' : 'text-zinc-500'}"></i>
-                ${ex.name}
-                ${done ? `<span class="text-[9px] font-mono text-brand bg-brand/10 px-1 rounded">${count}</span>` : ''}
-            </button>
+            <div class="inline-flex items-center ${done ? 'bg-emerald-950/30 border-brand/30' : 'bg-zinc-900 border-zinc-800'} rounded-xl border overflow-hidden">
+                <button onclick="window.selectActiveExercise(${ex.id})" class="px-2.5 py-1.5 hover:bg-zinc-800 text-xs ${done ? 'text-zinc-200' : 'text-zinc-300'} hover:text-brand transition flex items-center gap-1.5 font-medium">
+                    <i data-lucide="${done ? 'check-circle-2' : 'dumbbell'}" class="w-3 h-3 ${done ? 'text-brand' : 'text-zinc-500'}"></i>
+                    ${ex.name}
+                    ${done ? `<span class="text-[9px] font-mono text-brand bg-brand/10 px-1 rounded">${count}</span>` : ''}
+                </button>
+                ${!done ? `
+                <button onclick="window.openSwapExerciseModal(${ex.id})" class="px-1.5 py-1.5 text-zinc-500 hover:text-brand hover:bg-zinc-800 border-l border-zinc-800 transition" aria-label="Заменить упражнение" title="Заменить упражнение">
+                    <i data-lucide="repeat" class="w-3 h-3"></i>
+                </button>
+                ` : ''}
+            </div>
         `;
             }).join('');
         }
@@ -202,41 +209,43 @@ export async function onActiveExerciseChange() {
     const label = document.getElementById('current-workout-exercise-group');
     if (label) label.innerText = MUSCLE_NAMES[ex.primaryMuscle] || ex.primaryMuscle;
 
-    // Заполняем поля ввода из истории этого упражнения
-    const allLogs = await db.workoutLogs.where('exerciseId').equals(exId).toArray();
     const weightInput = document.getElementById('input-weight');
     const repsInput = document.getElementById('input-reps');
 
-    if (allLogs.length > 0) {
-        allLogs.sort((a, b) => {
-            const dateComp = a.date.localeCompare(b.date);
-            if (dateComp !== 0) return dateComp;
-            return (a.id || 0) - (b.id || 0);
-        });
-        const lastLog = allLogs[allLogs.length - 1];
-        if (weightInput) weightInput.value = lastLog.weight;
-        if (repsInput) repsInput.value = lastLog.reps;
+    const allLogs = await db.workoutLogs.where('exerciseId').equals(exId).toArray();
+    const bodyWeight = getBodyWeight();
+    const advice = getProgressionAdvice(allLogs, ex, bodyWeight);
+
+    // Подставляем вес/повторения из ЛУЧШЕГО подхода прошлой тренировки, а не из буквально
+    // последнего залогированного (иначе дроп-сет или подход "на фоне плохого самочувствия" в конце
+    // тренировки перезаписал бы поля вниз).
+    if (advice.type === 'advice' && advice.bestSet) {
+        if (weightInput) weightInput.value = advice.bestSet.weight;
+        if (repsInput) repsInput.value = advice.bestSet.reps;
     } else {
         if (weightInput) weightInput.value = '0';
         if (repsInput) repsInput.value = '10';
     }
 
-    await updateProgressionAdvice(exId);
+    renderProgressionAdvice(advice, ex);
 }
 
 export async function updateProgressionAdvice(exerciseId) {
-    const adviceText = document.getElementById('progression-advice-text');
-    const prevBestText = document.getElementById('advisor-prev-best');
-    if (!adviceText || !prevBestText) return;
-
     const exercises = await db.exercises.toArray();
     const ex = exercises.find(e => e.id === exerciseId);
     if (!ex) return;
 
     const allLogs = await db.workoutLogs.where('exerciseId').equals(exerciseId).toArray();
-
     const bodyWeight = getBodyWeight();
     const advice = getProgressionAdvice(allLogs, ex, bodyWeight);
+
+    renderProgressionAdvice(advice, ex);
+}
+
+function renderProgressionAdvice(advice, ex) {
+    const adviceText = document.getElementById('progression-advice-text');
+    const prevBestText = document.getElementById('advisor-prev-best');
+    if (!adviceText || !prevBestText) return;
 
     if (advice.type === 'first_time') {
         prevBestText.innerText = "Первый раз";
@@ -250,7 +259,7 @@ export async function updateProgressionAdvice(exerciseId) {
         return;
     }
 
-    const { lastTrainingDate, bestSet, max1RM, progression } = advice;
+    const { lastTrainingDate, bestSet, max1RM, recentBest, progression } = advice;
     const dateObj = new Date(lastTrainingDate);
     const formattedDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 
@@ -262,14 +271,25 @@ export async function updateProgressionAdvice(exerciseId) {
     const targetRepsMin = progression.targetRepsMin;
     const targetRepsMax = progression.targetRepsMax;
 
-    let lastWeightDesc = `${lastW} кг`;
-    if (ex.usesBodyweight) {
-        lastWeightDesc = `св ${lastW > 0 ? '(+ ' + lastW + ' кг)' : lastW < 0 ? '(- ' + Math.abs(lastW) + ' кг)' : ''}`;
+    const weightDesc = (w) => ex.usesBodyweight
+        ? `св ${w > 0 ? '(+ ' + w + ' кг)' : w < 0 ? '(- ' + Math.abs(w) + ' кг)' : ''}`
+        : `${w} кг`;
+
+    let recentBestHtml = '';
+    if (recentBest) {
+        const recentDateObj = new Date(recentBest.date);
+        const recentFormattedDate = recentDateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+        recentBestHtml = `
+    <div class="mt-2 text-[11px] bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1.5 flex items-start gap-1.5">
+        <span class="text-amber-400">📈</span>
+        <span>Последняя тренировка была слабее обычного. <strong>Ваш недавний максимум</strong> (${recentFormattedDate}): <strong class="text-zinc-100">${weightDesc(recentBest.weight)} × ${recentBest.reps} раз</strong> (~${Math.round(recentBest.oneRM)} кг 1ПМ). Ориентируйтесь на него, если чувствуете себя хорошо.</span>
+    </div>`;
     }
 
     adviceText.innerHTML = `
-    Прошлый лучший подход (${formattedDate}): <strong class="text-zinc-100">${lastWeightDesc} × ${lastR} раз</strong> 
+    Прошлый лучший подход (${formattedDate}): <strong class="text-zinc-100">${weightDesc(lastW)} × ${lastR} раз</strong>
     (Расчетный 1RM: <span class="text-brand font-mono">${Math.round(max1RM)} кг</span>).
+    ${recentBestHtml}
     <div class="mt-2 text-[11px] border-t border-zinc-900 pt-1.5 space-y-1">
         <div class="text-emerald-400 font-semibold">Варианты прогрессии на сегодня:</div>
         <div class="flex items-center gap-1.5">
@@ -1086,6 +1106,82 @@ export async function saveWorkoutSessionEdits() {
     buildActiveSessionUI();
 }
 
+let swapTargetExerciseId = null;
+
+export async function openSwapExerciseModal(oldExerciseId) {
+    swapTargetExerciseId = oldExerciseId;
+
+    const ex = await db.exercises.get(oldExerciseId);
+    const subtitle = document.getElementById('swap-modal-subtitle');
+    if (subtitle) subtitle.innerText = `Вместо: ${ex ? ex.name : '—'}`;
+
+    const search = document.getElementById('swap-modal-search');
+    if (search) search.value = '';
+
+    await renderSwapExerciseList();
+
+    const modal = document.getElementById('swap-exercise-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+export function closeSwapExerciseModal() {
+    swapTargetExerciseId = null;
+    const modal = document.getElementById('swap-exercise-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+export async function renderSwapExerciseList() {
+    const listEl = document.getElementById('swap-modal-list');
+    if (!listEl) return;
+
+    const searchInput = document.getElementById('swap-modal-search');
+    const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+    const exercises = await db.exercises.toArray();
+    exercises.sort((a, b) => a.name.localeCompare(b.name));
+
+    const currentIds = new Set(activeSession ? activeSession.exerciseIds : []);
+    let candidates = exercises.filter(ex => ex.id !== swapTargetExerciseId && !currentIds.has(ex.id));
+    if (query) candidates = candidates.filter(ex => ex.name.toLowerCase().includes(query));
+
+    if (candidates.length === 0) {
+        listEl.innerHTML = `<div class="text-center py-6 text-xs text-zinc-500 italic">Нет доступных упражнений</div>`;
+        return;
+    }
+
+    listEl.innerHTML = candidates.map(ex => `
+        <button onclick="window.performExerciseSwap(${ex.id})" class="w-full text-left px-3 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl text-xs text-zinc-200 transition">
+            ${ex.name}
+        </button>
+    `).join('');
+}
+
+export async function performExerciseSwap(newExerciseId) {
+    if (!activeSession || swapTargetExerciseId === null) return;
+
+    const oldId = swapTargetExerciseId;
+    const idx = activeSession.exerciseIds.indexOf(oldId);
+    if (idx === -1) {
+        closeSwapExerciseModal();
+        return;
+    }
+
+    activeSession.exerciseIds[idx] = newExerciseId;
+    localStorage.setItem('active_session_anatomyfit', JSON.stringify(activeSession));
+
+    const select = document.getElementById('active-exercise-select');
+    const wasSelected = select && parseInt(select.value) === oldId;
+
+    closeSwapExerciseModal();
+    await buildActiveSessionUI();
+
+    if (wasSelected) {
+        selectActiveExercise(newExerciseId);
+    }
+
+    showToast('Упражнение заменено', 'success');
+}
+
 // Привязка к window для поддержки onclick в HTML разметке
 window.adjustValue = adjustValue;
 window.startWorkoutSession = startWorkoutSession;
@@ -1108,3 +1204,8 @@ window.cancelWorkoutSessionEdits = cancelWorkoutSessionEdits;
 window.saveWorkoutSessionEdits = saveWorkoutSessionEdits;
 window.cancelWorkoutSession = cancelWorkoutSession;
 window.finishWorkoutSession = finishWorkoutSession;
+window.onActiveExerciseChange = onActiveExerciseChange;
+window.openSwapExerciseModal = openSwapExerciseModal;
+window.closeSwapExerciseModal = closeSwapExerciseModal;
+window.renderSwapExerciseList = renderSwapExerciseList;
+window.performExerciseSwap = performExerciseSwap;

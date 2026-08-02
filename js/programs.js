@@ -61,7 +61,8 @@ export async function loadRoutinesInSelectors() {
 
     const poolContainer = document.getElementById('program-exercise-selector-pool');
     if (poolContainer) {
-        poolContainer.innerHTML = exercises.map(ex => `
+        const sortedExercises = [...exercises].sort((a, b) => a.name.localeCompare(b.name));
+        poolContainer.innerHTML = sortedExercises.map(ex => `
             <button data-id="${ex.id}" onclick="window.toggleExerciseForProgram(${ex.id}, this)" class="px-2 py-1 bg-zinc-900 border border-zinc-800 hover:border-brand/40 text-[10px] rounded-lg text-zinc-300 transition-all">
                 ${ex.name}
             </button>
