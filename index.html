@@ -1045,6 +1045,95 @@
             </div>
         </section>
 
+        <!-- ВКЛАДКА 6: ДОЛГОСРОЧНЫЙ ПРОГРЕСС -->
+        <section id="tab-progress" class="space-y-6 hidden">
+
+            <!-- Стрики и общая статистика -->
+            <div class="grid grid-cols-3 gap-2.5">
+                <div class="bg-brand-card p-3.5 rounded-xl border border-zinc-800 text-center">
+                    <span class="text-xl font-mono font-bold text-brand block" id="streak-current-val">0</span>
+                    <span class="text-[9px] text-zinc-400 uppercase font-semibold tracking-wide">Текущая серия</span>
+                </div>
+                <div class="bg-brand-card p-3.5 rounded-xl border border-zinc-800 text-center">
+                    <span class="text-xl font-mono font-bold text-zinc-100 block" id="streak-longest-val">0</span>
+                    <span class="text-[9px] text-zinc-400 uppercase font-semibold tracking-wide">Рекорд серии</span>
+                </div>
+                <div class="bg-brand-card p-3.5 rounded-xl border border-zinc-800 text-center">
+                    <span class="text-xl font-mono font-bold text-zinc-100 block" id="streak-total-val">0</span>
+                    <span class="text-[9px] text-zinc-400 uppercase font-semibold tracking-wide">Тренировок</span>
+                </div>
+            </div>
+
+            <!-- Личные рекорды -->
+            <div class="bg-brand-card p-5 rounded-2xl border border-zinc-800 space-y-3">
+                <div>
+                    <h3 class="font-bold text-zinc-200 flex items-center gap-2">
+                        <i data-lucide="award" class="w-5 h-5 text-brand"></i>
+                        Личные рекорды
+                    </h3>
+                    <p class="text-xs text-zinc-400 leading-relaxed">Лучший подход за всю историю по каждому упражнению.</p>
+                </div>
+                <input type="text" id="pr-search-input" oninput="window.renderPRList()" placeholder="Поиск упражнения..."
+                    class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-brand">
+                <div id="pr-list-container" class="space-y-2 max-h-80 overflow-y-auto pr-1">
+                    <!-- Заполняется динамически -->
+                </div>
+            </div>
+
+            <!-- Тоннаж по месяцам -->
+            <div class="bg-brand-card p-5 rounded-2xl border border-zinc-800 space-y-3">
+                <div>
+                    <h3 class="font-bold text-zinc-200">Тоннаж по месяцам</h3>
+                    <p class="text-xs text-zinc-400">Суммарный поднятый вес за последние 6 месяцев.</p>
+                </div>
+                <div class="relative w-full h-48">
+                    <canvas id="monthlyVolumeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Прогресс по мышце за долгий период -->
+            <div class="bg-brand-card p-5 rounded-2xl border border-zinc-800 space-y-3">
+                <div>
+                    <h3 class="font-bold text-zinc-200">Прогресс по мышце</h3>
+                    <p class="text-xs text-zinc-400">Количество подходов на выбранную группу мышц по месяцам.</p>
+                </div>
+                <select id="muscle-trend-select" onchange="window.renderMuscleTrendChart()"
+                    class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand">
+                    <!-- Заполняется динамически -->
+                </select>
+                <div class="relative w-full h-48">
+                    <canvas id="muscleTrendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Вес тела -->
+            <div class="bg-brand-card p-5 rounded-2xl border border-zinc-800 space-y-3">
+                <div>
+                    <h3 class="font-bold text-zinc-200">Вес тела</h3>
+                    <p class="text-xs text-zinc-400">История изменений веса тела.</p>
+                </div>
+                <div class="flex gap-2">
+                    <input type="date" id="bw-log-date"
+                        class="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-brand">
+                    <div class="relative w-24">
+                        <input type="number" id="bw-log-weight" step="0.1" min="10" max="300" placeholder="75.0"
+                            class="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-8 py-2 text-xs text-zinc-200 focus:outline-none focus:border-brand font-mono">
+                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500">кг</span>
+                    </div>
+                    <button onclick="window.logBodyWeightEntry()"
+                        class="bg-brand hover:bg-brand-dark text-black font-bold px-3 py-2 rounded-xl text-xs transition flex-shrink-0">
+                        Записать
+                    </button>
+                </div>
+                <div class="relative w-full h-40">
+                    <canvas id="bodyweightChart"></canvas>
+                </div>
+                <div id="bodyweight-history-list" class="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    <!-- Заполняется динамически -->
+                </div>
+            </div>
+        </section>
+
     </main>
 
     <!-- НАВИГАЦИОННАЯ ПАНЕЛЬ СНИЗУ -->
@@ -1067,6 +1156,12 @@
                 class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
                 <i data-lucide="radar" class="w-5 h-5"></i>
                 <span class="text-[10px] font-medium">Анатомия</span>
+            </button>
+
+            <button onclick="switchTab('progress')" id="nav-progress"
+                class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
+                <i data-lucide="trending-up" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">Прогресс</span>
             </button>
 
             <button onclick="switchTab('exercises')" id="nav-exercises"

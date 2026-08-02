@@ -4,6 +4,7 @@ import { loadRoutinesInSelectors } from './programs.js';
 import { loadExercisesInSelect, loadAllExercisesList } from './exercises.js';
 import { buildActiveSessionUI, restoreSessionFromStorage, loadWorkoutHistory, setActiveSession, getSessionName } from './workout.js';
 import { getEffectiveWeight } from './core/exercise.js';
+import { renderProgressTab } from './progress.js';
 import { createIcons, icons } from 'lucide';
 window.lucide = { createIcons: () => createIcons({ icons }) };
 
@@ -80,7 +81,7 @@ export function closeConfirm(result) {
 }
 
 export async function switchTab(tabName) {
-    const sections = ['workout', 'programs', 'stats', 'exercises', 'settings'];
+    const sections = ['workout', 'programs', 'stats', 'progress', 'exercises', 'settings'];
     sections.forEach(sec => {
         const el = document.getElementById(`tab-${sec}`);
         const nav = document.getElementById(`nav-${sec}`);
@@ -98,6 +99,8 @@ export async function switchTab(tabName) {
 
     if (tabName === 'stats') {
         updateStatistics();
+    } else if (tabName === 'progress') {
+        await renderProgressTab();
     } else if (tabName === 'exercises') {
         loadAllExercisesList();
     } else if (tabName === 'programs') {
@@ -112,13 +115,15 @@ export async function exportData() {
     const exercises = await db.exercises.toArray();
     const logs = await db.workoutLogs.toArray();
     const programs = await db.programs.toArray();
+    const bodyWeightLogs = await db.bodyWeightLogs.toArray();
 
     const exportObj = {
         app: 'AnatomyFitPWA',
-        version: 3,
+        version: 4,
         exercises,
         logs,
-        programs
+        programs,
+        bodyWeightLogs
     };
 
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj));
@@ -147,6 +152,7 @@ export function importData(event) {
             await db.exercises.clear();
             await db.workoutLogs.clear();
             await db.programs.clear();
+            await db.bodyWeightLogs.clear();
 
             if (imported.exercises && imported.exercises.length > 0) {
                 await db.exercises.bulkAdd(imported.exercises);
@@ -159,6 +165,14 @@ export function importData(event) {
             } else {
                 await db.programs.bulkAdd(DEFAULT_PROGRAMS);
             }
+            if (imported.bodyWeightLogs && imported.bodyWeightLogs.length > 0) {
+                await db.bodyWeightLogs.bulkAdd(imported.bodyWeightLogs);
+                const latest = [...imported.bodyWeightLogs].sort((a, b) => a.date.localeCompare(b.date)).pop();
+                if (latest) localStorage.setItem('anatomyfit_bodyweight', latest.weight);
+            }
+
+            const bwInput = document.getElementById('user-bodyweight');
+            if (bwInput) bwInput.value = getBodyWeight();
 
             showToast('Данные успешно импортированы!', 'success');
 

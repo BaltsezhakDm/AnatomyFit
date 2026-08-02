@@ -1,7 +1,8 @@
 import { db, getBodyWeight, getRestDuration } from './db.js';
 import { updateStatistics, MUSCLE_NAMES } from './stats.js';
-import { getEffectiveWeight } from './core/exercise.js';
+import { getEffectiveWeight, calculate1RM } from './core/exercise.js';
 import { getProgressionAdvice } from './core/progression.js';
+import { getBest1RM } from './core/records.js';
 import { showToast, showConfirm, switchTab } from './ui.js';
 
 export let activeSession = null;
@@ -330,6 +331,12 @@ export async function saveActiveSet() {
     const todayStr = new Date().toISOString().split('T')[0];
     const sessionId = activeSession ? activeSession.sessionId : Date.now();
 
+    // Запоминаем рекорд ДО записи нового подхода, чтобы понять, побит ли он
+    const ex = await db.exercises.get(exerciseId);
+    const bodyWeight = getBodyWeight();
+    const priorLogs = await db.workoutLogs.where('exerciseId').equals(exerciseId).toArray();
+    const priorBest1RM = ex ? getBest1RM(priorLogs, ex, bodyWeight) : 0;
+
     await db.workoutLogs.add({
         date: todayStr,
         exerciseId,
@@ -345,7 +352,18 @@ export async function saveActiveSet() {
         await buildActiveSessionUI();
     }
 
-    showToast("Подход записан!", "success");
+    let isNewPR = false;
+    if (ex && priorLogs.length > 0) {
+        const newEffW = getEffectiveWeight(weight, ex.usesBodyweight, bodyWeight);
+        const new1RM = calculate1RM(newEffW, reps);
+        isNewPR = new1RM > priorBest1RM * 1.001;
+    }
+
+    if (isNewPR) {
+        showToast(`🎉 Новый рекорд по «${ex.name}»!`, "success");
+    } else {
+        showToast("Подход записан!", "success");
+    }
     await loadTodayLogs();
     await updateStatistics();
     await updateProgressionAdvice(exerciseId);

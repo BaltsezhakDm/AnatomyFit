@@ -25,3 +25,27 @@ export function getRollingPeriods() {
         prevRange: `${fmtDisplay(prevStart)} - ${fmtDisplay(prevEnd)}`
     };
 }
+
+/**
+ * Последние `count` календарных месяцев (включая текущий), от старого к новому.
+ * @returns {Array} [{ key: 'YYYY-MM', label: 'мес.ГГ', start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }]
+ */
+export function getMonthlyBuckets(count = 6) {
+    const now = new Date();
+    const buckets = [];
+
+    for (let i = count - 1; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const year = d.getFullYear();
+        const month = d.getMonth();
+        const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+        const start = `${key}-01`;
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        const end = `${key}-${String(lastDay).padStart(2, '0')}`;
+        const label = d.toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' });
+
+        buckets.push({ key, label, start, end });
+    }
+
+    return buckets;
+}

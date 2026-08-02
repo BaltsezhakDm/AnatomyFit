@@ -63,6 +63,21 @@ db.version(5).stores({
     });
 });
 
+// Версия 6 с историей веса тела
+db.version(6).stores({
+    exercises: '++id, name, isCustom, primaryMuscle, secondaryMuscle, secondaryCoeff, tertiaryMuscle, tertiaryCoeff, usesBodyweight, muscleLoads',
+    workoutLogs: '++id, date, exerciseId, weight, reps, sessionId',
+    programs: '++id, name, exerciseIds',
+    bodyWeightLogs: '++id, date, weight'
+}).upgrade(async tx => {
+    // Миграция: переносим единственное сохраненное значение веса тела в историю
+    const existing = parseFloat(localStorage.getItem('anatomyfit_bodyweight'));
+    if (existing && !isNaN(existing)) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        await tx.bodyWeightLogs.add({ date: todayStr, weight: existing });
+    }
+});
+
 
 export const DEFAULT_EXERCISES = [
     { name: 'Жим лежа на горизонтальной скамье', primaryMuscle: 'chest', secondaryMuscle: 'front_delts', secondaryCoeff: 0.6, tertiaryMuscle: 'triceps', tertiaryCoeff: 0.5, isCustom: 0, usesBodyweight: 0, muscleLoads: { chest: 0.50, front_delts: 0.30, triceps: 0.20 } },
@@ -92,4 +107,36 @@ export function getBodyWeight() {
 
 export function getRestDuration() {
     return parseInt(localStorage.getItem('anatomyfit_rest_duration')) || 90;
+}
+
+export async function getBodyWeightHistory() {
+    const entries = await db.bodyWeightLogs.toArray();
+    return entries.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export async function logBodyWeightEntry(date, weight) {
+    const existing = await db.bodyWeightLogs.where('date').equals(date).first();
+    if (existing) {
+        await db.bodyWeightLogs.update(existing.id, { weight });
+    } else {
+        await db.bodyWeightLogs.add({ date, weight });
+    }
+
+    // Синхронизируем "текущий" вес тела, если записанная дата — самая свежая из истории
+    const history = await getBodyWeightHistory();
+    const latest = history[history.length - 1];
+    if (latest && latest.date === date) {
+        localStorage.setItem('anatomyfit_bodyweight', weight);
+    }
+}
+
+export async function deleteBodyWeightEntry(id) {
+    await db.bodyWeightLogs.delete(id);
+
+    // Пересинхронизируем "текущий" вес тела с новым самым свежим значением (если есть)
+    const history = await getBodyWeightHistory();
+    const latest = history[history.length - 1];
+    if (latest) {
+        localStorage.setItem('anatomyfit_bodyweight', latest.weight);
+    }
 }
