@@ -2,7 +2,7 @@ import { db, DEFAULT_EXERCISES, DEFAULT_PROGRAMS, getBodyWeight, getRestDuration
 import { updateStatistics, MUSCLE_NAMES } from './stats.js';
 import { loadRoutinesInSelectors } from './programs.js';
 import { loadExercisesInSelect, loadAllExercisesList } from './exercises.js';
-import { buildActiveSessionUI, restoreSessionFromStorage, loadWorkoutHistory, setActiveSession, getSessionName } from './workout.js';
+import { buildActiveSessionUI, restoreSessionFromStorage, loadWorkoutHistory, setActiveSession, getSessionName, updatePickerModeUI } from './workout.js';
 import { getEffectiveWeight } from './core/exercise.js';
 import { renderProgressTab } from './progress.js';
 import { createIcons, icons } from 'lucide';
@@ -274,6 +274,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         await updateStatistics();
         await loadWorkoutHistory();
         restoreSessionFromStorage();
+        updatePickerModeUI();
         initPWA();
     } catch (e) {
         console.error("DOMContentLoaded initialization error:", e);
@@ -309,7 +310,7 @@ export async function exportDataCSV() {
 
         // BOM для корректной кодировки UTF-8 в Excel (поддержка кириллицы)
         let csvContent = "\uFEFF";
-        csvContent += "Дата;Программа;Упражнение;Первичная группа;Вес;Повторения;Тоннаж\n";
+        csvContent += "Дата;Программа;Упражнение;Первичная группа;Вес;Повторения;Тоннаж;Заметка\n";
 
         const bodyWeight = getBodyWeight();
 
@@ -323,8 +324,9 @@ export async function exportDataCSV() {
 
             const safeName = ex.name.replace(/;/g, ',');
             const safeProgName = progName.replace(/;/g, ',');
+            const safeComment = (log.comment || '').replace(/;/g, ',').replace(/[\r\n]+/g, ' ');
             
-            csvContent += `${log.date};${safeProgName};${safeName};${muscleName};${log.weight};${log.reps};${tonnage}\n`;
+            csvContent += `${log.date};${safeProgName};${safeName};${muscleName};${log.weight};${log.reps};${tonnage};${safeComment}\n`;
         });
 
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

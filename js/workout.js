@@ -1,4 +1,4 @@
-import { db, getBodyWeight, getRestDuration } from './db.js';
+import { db, getBodyWeight, getRestDuration, EQUIPMENT_INFO, MOVEMENT_PATTERNS } from './db.js';
 import { updateStatistics, MUSCLE_NAMES } from './stats.js';
 import { getEffectiveWeight, calculate1RM } from './core/exercise.js';
 import { getProgressionAdvice } from './core/progression.js';
@@ -6,6 +6,17 @@ import { getBest1RM } from './core/records.js';
 import { showToast, showConfirm, switchTab } from './ui.js';
 
 export let activeSession = null;
+export let currentPickerMode = localStorage.getItem('anatomyfit_exercise_view_mode') || 'classic';
+export let selectedMovementPatternId = null;
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
 
 let wakeLock = null;
 
@@ -192,8 +203,9 @@ export async function buildActiveSessionUI() {
         }
     }
 
-    onActiveExerciseChange();
+    await onActiveExerciseChange();
     await loadTodayLogs();
+    updatePickerModeUI();
     lucide.createIcons();
 }
 
@@ -229,6 +241,7 @@ export async function onActiveExerciseChange() {
     }
 
     renderProgressionAdvice(advice, ex);
+    await updateTreePickerButton(exId);
 }
 
 export async function updateProgressionAdvice(exerciseId) {
@@ -287,9 +300,27 @@ function renderProgressionAdvice(advice, ex) {
     </div>`;
     }
 
+    let lastCommentHtml = '';
+    if (advice.lastComment) {
+        const commentDateObj = new Date(advice.lastComment.date);
+        const formattedCommentDate = commentDateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+        const labelText = advice.lastComment.isFromLastSession
+            ? `Заметка с прошлой тренировки (${formattedCommentDate})`
+            : `Заметка от ${formattedCommentDate}`;
+        lastCommentHtml = `
+    <div class="mt-2 text-xs bg-brand/10 border border-brand/25 rounded-xl p-2.5 flex items-start gap-2 text-zinc-200">
+        <span class="text-brand text-sm leading-none mt-0.5">💬</span>
+        <div class="min-w-0 flex-1">
+            <span class="text-[9px] uppercase tracking-wider font-extrabold text-brand block">${labelText}:</span>
+            <span class="text-zinc-100 font-medium leading-snug mt-0.5 block">${escapeHtml(advice.lastComment.text)}</span>
+        </div>
+    </div>`;
+    }
+
     adviceText.innerHTML = `
     Прошлый лучший подход (${formattedDate}): <strong class="text-zinc-100">${weightDesc(lastW)} × ${lastR} раз</strong>
     (Расчетный 1RM: <span class="text-brand font-mono">${Math.round(max1RM)} кг</span>).
+    ${lastCommentHtml}
     ${recentBestHtml}
     <div class="mt-2 text-[11px] border-t border-zinc-900 pt-1.5 space-y-1">
         <div class="text-emerald-400 font-semibold">Варианты прогрессии на сегодня:</div>
@@ -319,9 +350,11 @@ export async function saveActiveSet() {
     const exerciseId = parseInt(select.value);
     const weightInput = document.getElementById('input-weight');
     const repsInput = document.getElementById('input-reps');
+    const commentInput = document.getElementById('input-comment');
 
     const weight = weightInput ? parseFloat(weightInput.value) : 0;
     const reps = repsInput ? parseInt(repsInput.value) : 0;
+    const comment = commentInput ? commentInput.value.trim() : '';
 
     if (isNaN(weight) || isNaN(reps) || reps <= 0) {
         showToast("Заполните вес и повторения корректно", "error");
@@ -342,8 +375,13 @@ export async function saveActiveSet() {
         exerciseId,
         weight,
         reps,
-        sessionId
+        sessionId,
+        comment
     });
+
+    if (commentInput) {
+        commentInput.value = '';
+    }
 
     // Если упражнение новое для текущей сессии, добавляем его в список сессии
     if (activeSession && !activeSession.exerciseIds.includes(exerciseId)) {
@@ -609,12 +647,22 @@ export async function loadTodayLogs() {
         const totalVol = exLogs.reduce((sum, l) => sum + l.weight * l.reps, 0);
 
         const setsHtml = exLogs.map((log, idx) => `
-            <div class="flex items-center gap-2 bg-zinc-900 px-2 py-1.5 rounded-lg border border-zinc-800">
-                <span class="text-[9px] font-mono text-zinc-500 w-3">${idx + 1}</span>
-                <span class="font-mono text-xs font-bold text-zinc-100">${log.weight} × ${log.reps}</span>
-                <button onclick="window.deleteLog(${log.id})" class="text-zinc-500 hover:text-red-400 transition p-2 -m-1" aria-label="Удалить подход">
-                    <i data-lucide="trash" class="w-4 h-4"></i>
-                </button>
+            <div class="bg-zinc-900 px-2.5 py-1.5 rounded-lg border border-zinc-800 space-y-1">
+                <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="text-[9px] font-mono text-zinc-500 w-3">${idx + 1}</span>
+                        <span class="font-mono text-xs font-bold text-zinc-100">${log.weight} × ${log.reps}</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button onclick="window.promptEditComment(${log.id})" class="text-zinc-500 hover:text-brand transition p-1 -m-0.5" title="${log.comment ? 'Изменить заметку' : 'Добавить заметку'}">
+                            <i data-lucide="message-square" class="w-3.5 h-3.5 ${log.comment ? 'text-brand' : 'text-zinc-600'}"></i>
+                        </button>
+                        <button onclick="window.deleteLog(${log.id})" class="text-zinc-500 hover:text-red-400 transition p-1 -m-0.5" aria-label="Удалить подход">
+                            <i data-lucide="trash" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+                ${log.comment ? `<div class="text-[10px] text-zinc-300 font-medium italic border-t border-zinc-800/80 pt-1 flex items-start gap-1"><span class="text-brand">💬</span><span class="break-words">${escapeHtml(log.comment)}</span></div>` : ''}
             </div>
         `).join('');
 
@@ -631,6 +679,18 @@ export async function loadTodayLogs() {
     }).join('');
 
     lucide.createIcons();
+}
+
+export async function promptEditComment(logId) {
+    const log = await db.workoutLogs.get(logId);
+    if (!log) return;
+    const current = log.comment || '';
+    const updated = prompt("Заметка к подходу:", current);
+    if (updated !== null) {
+        await db.workoutLogs.update(logId, { comment: updated.trim() });
+        await refreshAfterLogChange();
+        showToast("Заметка обновлена", "success");
+    }
 }
 
 async function refreshAfterLogChange() {
@@ -839,6 +899,13 @@ export async function showWorkoutDetails(sessionId, date) {
         `;
         }).join('');
 
+        const commentsHtml = logs.filter(l => l.comment && l.comment.trim()).map(l => `
+            <div class="text-[10px] text-zinc-300 bg-zinc-950/60 px-2 py-1 rounded border border-zinc-800/60 flex items-start gap-1.5">
+                <span class="text-brand">💬</span>
+                <span class="italic break-words">${escapeHtml(l.comment)}</span>
+            </div>
+        `).join('');
+
         return `
         <div class="space-y-1.5 bg-zinc-900/40 p-2.5 rounded-xl border border-zinc-800/40">
             <div class="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
@@ -848,6 +915,7 @@ export async function showWorkoutDetails(sessionId, date) {
             <div class="flex flex-wrap gap-1.5">
                 ${setsHtml}
             </div>
+            ${commentsHtml ? `<div class="space-y-1 pt-1 border-t border-zinc-800/40">${commentsHtml}</div>` : ''}
         </div>
     `;
     }).join('');
@@ -960,26 +1028,37 @@ export async function renderWorkoutDetailsEditMode() {
             const setsHtml = logs.map((log, index) => {
                 const weightVal = log.weight !== null && log.weight !== undefined ? log.weight : '';
                 const repsVal = log.reps !== null && log.reps !== undefined ? log.reps : '';
+                const commentVal = log.comment || '';
                 return `
-                <div class="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 p-1.5 rounded-lg">
-                    <span class="text-[10px] font-mono text-zinc-500 w-4 text-center">${index + 1}:</span>
-                    <div class="flex items-center gap-0.5 flex-1 min-w-0">
-                        <input type="number" step="0.5" 
-                               class="edit-set-weight w-16 bg-zinc-950 border border-zinc-800 rounded px-1 py-0.5 text-xs text-center font-mono text-zinc-200 focus:outline-none focus:border-brand" 
-                               value="${weightVal}" 
-                               oninput="window.updateEditingSetWeight(${log._arrayIndex}, this.value)">
-                        <span class="text-[9px] text-zinc-500">${ex.usesBodyweight ? 'св' : 'кг'}</span>
+                <div class="bg-zinc-900 border border-zinc-800 p-2 rounded-xl space-y-1.5">
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-[10px] font-mono text-zinc-500 w-4 text-center">${index + 1}:</span>
+                        <div class="flex items-center gap-0.5 flex-1 min-w-0">
+                            <input type="number" step="0.5" 
+                                   class="edit-set-weight w-16 bg-zinc-950 border border-zinc-800 rounded px-1 py-0.5 text-xs text-center font-mono text-zinc-200 focus:outline-none focus:border-brand" 
+                                   value="${weightVal}" 
+                                   oninput="window.updateEditingSetWeight(${log._arrayIndex}, this.value)">
+                            <span class="text-[9px] text-zinc-500">${ex.usesBodyweight ? 'св' : 'кг'}</span>
+                        </div>
+                        <div class="flex items-center gap-0.5 flex-1 min-w-0">
+                            <input type="number" 
+                                   class="edit-set-reps w-12 bg-zinc-950 border border-zinc-800 rounded px-1 py-0.5 text-xs text-center font-mono text-zinc-200 focus:outline-none focus:border-brand" 
+                                   value="${repsVal}" 
+                                   oninput="window.updateEditingSetReps(${log._arrayIndex}, this.value)">
+                            <span class="text-[9px] text-zinc-500">раз</span>
+                        </div>
+                        <button onclick="window.removeSetFromEditList(${log._arrayIndex})" class="text-zinc-500 hover:text-red-400 p-2 -m-1 transition" aria-label="Удалить подход">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
                     </div>
-                    <div class="flex items-center gap-0.5 flex-1 min-w-0">
-                        <input type="number" 
-                               class="edit-set-reps w-12 bg-zinc-950 border border-zinc-800 rounded px-1 py-0.5 text-xs text-center font-mono text-zinc-200 focus:outline-none focus:border-brand" 
-                               value="${repsVal}" 
-                               oninput="window.updateEditingSetReps(${log._arrayIndex}, this.value)">
-                        <span class="text-[9px] text-zinc-500">раз</span>
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-[10px] text-zinc-500">💬</span>
+                        <input type="text" 
+                               placeholder="Заметка к подходу (опционально)..." 
+                               class="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-0.5 text-[10px] text-zinc-200 focus:outline-none focus:border-brand" 
+                               value="${escapeHtml(commentVal)}" 
+                               oninput="window.updateEditingSetComment(${log._arrayIndex}, this.value)">
                     </div>
-                    <button onclick="window.removeSetFromEditList(${log._arrayIndex})" class="text-zinc-500 hover:text-red-400 p-2.5 -m-1 transition" aria-label="Удалить подход">
-                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                    </button>
                 </div>
             `;
             }).join('');
@@ -1025,6 +1104,12 @@ export function updateEditingSetReps(arrayIndex, val) {
     editingSessionLogs[arrayIndex].reps = isNaN(reps) ? null : reps;
 }
 
+export function updateEditingSetComment(arrayIndex, val) {
+    if (editingSessionLogs[arrayIndex]) {
+        editingSessionLogs[arrayIndex].comment = val;
+    }
+}
+
 export function addSetToEditList(exerciseId) {
     exerciseId = Number(exerciseId);
     const lastSet = [...editingSessionLogs].reverse().find(log => Number(log.exerciseId) === exerciseId);
@@ -1036,7 +1121,8 @@ export function addSetToEditList(exerciseId) {
         exerciseId,
         weight,
         reps,
-        sessionId: editingSessionId || Date.now()
+        sessionId: editingSessionId || Date.now(),
+        comment: ''
     });
 
     renderWorkoutDetailsEditMode();
@@ -1106,7 +1192,8 @@ export async function saveWorkoutSessionEdits() {
         exerciseId: log.exerciseId,
         weight: log.weight,
         reps: log.reps,
-        sessionId: sessionToSaveId
+        sessionId: sessionToSaveId,
+        comment: log.comment || ''
     }));
 
     if (newLogs.length > 0) {
@@ -1200,6 +1287,335 @@ export async function performExerciseSwap(newExerciseId) {
     showToast('Упражнение заменено', 'success');
 }
 
+export function setExercisePickerMode(mode) {
+    currentPickerMode = mode;
+    localStorage.setItem('anatomyfit_exercise_view_mode', mode);
+    updatePickerModeUI();
+    const select = document.getElementById('active-exercise-select');
+    if (select && select.value) {
+        updateTreePickerButton(parseInt(select.value));
+    }
+}
+
+export function saveDefaultExerciseViewMode(mode) {
+    setExercisePickerMode(mode);
+    const classicBtn = document.getElementById('setting-view-mode-classic');
+    const treeBtn = document.getElementById('setting-view-mode-tree');
+    if (classicBtn && treeBtn) {
+        if (mode === 'classic') {
+            classicBtn.className = "px-3 py-2.5 rounded-xl border border-brand bg-brand/10 text-brand text-xs font-semibold flex items-center justify-center gap-1.5 transition";
+            treeBtn.className = "px-3 py-2.5 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition";
+        } else {
+            treeBtn.className = "px-3 py-2.5 rounded-xl border border-brand bg-brand/10 text-brand text-xs font-semibold flex items-center justify-center gap-1.5 transition";
+            classicBtn.className = "px-3 py-2.5 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition";
+        }
+    }
+    showToast(`Режим выбора установлен: ${mode === 'classic' ? 'Классический' : 'По движениям'}`, 'success');
+}
+
+export function updatePickerModeUI() {
+    const classicBtn = document.getElementById('view-mode-classic-btn');
+    const treeBtn = document.getElementById('view-mode-tree-btn');
+    const classicWrap = document.getElementById('active-exercise-classic-wrapper');
+    const treeWrap = document.getElementById('active-exercise-tree-wrapper');
+
+    if (!classicBtn || !treeBtn) return;
+
+    if (currentPickerMode === 'tree') {
+        treeBtn.className = "px-2 py-0.5 rounded-md font-medium transition text-brand bg-zinc-800";
+        classicBtn.className = "px-2 py-0.5 rounded-md font-medium transition text-zinc-400 hover:text-zinc-200";
+        if (classicWrap) classicWrap.classList.add('hidden');
+        if (treeWrap) treeWrap.classList.remove('hidden');
+    } else {
+        classicBtn.className = "px-2 py-0.5 rounded-md font-medium transition text-brand bg-zinc-800";
+        treeBtn.className = "px-2 py-0.5 rounded-md font-medium transition text-zinc-400 hover:text-zinc-200 flex items-center gap-1";
+        if (classicWrap) classicWrap.classList.remove('hidden');
+        if (treeWrap) treeWrap.classList.add('hidden');
+    }
+
+    const settingClassic = document.getElementById('setting-view-mode-classic');
+    const settingTree = document.getElementById('setting-view-mode-tree');
+    if (settingClassic && settingTree) {
+        if (currentPickerMode === 'classic') {
+            settingClassic.className = "px-3 py-2.5 rounded-xl border border-brand bg-brand/10 text-brand text-xs font-semibold flex items-center justify-center gap-1.5 transition";
+            settingTree.className = "px-3 py-2.5 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition";
+        } else {
+            settingTree.className = "px-3 py-2.5 rounded-xl border border-brand bg-brand/10 text-brand text-xs font-semibold flex items-center justify-center gap-1.5 transition";
+            settingClassic.className = "px-3 py-2.5 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition";
+        }
+    }
+}
+
+export async function updateTreePickerButton(exerciseId) {
+    if (!exerciseId) return;
+    const ex = await db.exercises.get(exerciseId);
+    if (!ex) return;
+
+    const patternEl = document.getElementById('tree-picker-btn-pattern');
+    const titleEl = document.getElementById('tree-picker-btn-title');
+    const equipEl = document.getElementById('tree-picker-btn-equipment');
+    const iconContainer = document.getElementById('tree-picker-btn-icon');
+
+    const pattern = MOVEMENT_PATTERNS[ex.movementPattern] || { name: 'Базовое движение', icon: 'dumbbell' };
+    const equip = EQUIPMENT_INFO[ex.equipment] || { name: ex.equipment || 'Снаряд', icon: 'dumbbell' };
+
+    if (patternEl) patternEl.innerText = pattern.name;
+    if (titleEl) titleEl.innerText = ex.name;
+    if (equipEl) {
+        equipEl.innerHTML = `
+            <span class="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700/60 rounded text-[9px] font-medium text-zinc-300 inline-flex items-center gap-1">
+                <i data-lucide="${equip.icon}" class="w-2.5 h-2.5 text-brand"></i>
+                ${equip.name}
+            </span>
+        `;
+    }
+    if (iconContainer) {
+        iconContainer.innerHTML = `<i data-lucide="${pattern.icon || 'dumbbell'}" class="w-4 h-4"></i>`;
+    }
+    lucide.createIcons();
+}
+
+export async function openMovementPickerModal() {
+    selectedMovementPatternId = null;
+    const modal = document.getElementById('movement-picker-modal');
+    const backBtn = document.getElementById('movement-picker-back-btn');
+    const titleEl = document.getElementById('movement-picker-title');
+    const subtitleEl = document.getElementById('movement-picker-subtitle');
+    const searchContainer = document.getElementById('movement-picker-search-container');
+    const searchInput = document.getElementById('movement-picker-search');
+
+    if (backBtn) backBtn.classList.add('hidden');
+    if (titleEl) titleEl.innerText = "Выбор движения";
+    if (subtitleEl) subtitleEl.innerText = "Выберите биомеханический паттерн";
+    if (searchContainer) searchContainer.classList.remove('hidden');
+    if (searchInput) searchInput.value = '';
+
+    await renderMovementPatterns();
+
+    if (modal) modal.classList.remove('hidden');
+    lucide.createIcons();
+}
+
+export function closeMovementPickerModal() {
+    const modal = document.getElementById('movement-picker-modal');
+    if (modal) modal.classList.add('hidden');
+    selectedMovementPatternId = null;
+}
+
+export async function renderMovementPatterns(filterQuery = '') {
+    const content = document.getElementById('movement-picker-content');
+    if (!content) return;
+
+    const query = filterQuery.toLowerCase().trim();
+    const allExercises = await db.exercises.toArray();
+
+    const exercisesByPattern = {};
+    allExercises.forEach(ex => {
+        const pKey = ex.movementPattern || 'other';
+        if (!exercisesByPattern[pKey]) exercisesByPattern[pKey] = [];
+        exercisesByPattern[pKey].push(ex);
+    });
+
+    let patternsList = Object.values(MOVEMENT_PATTERNS);
+
+    if (query) {
+        patternsList = patternsList.filter(p => {
+            const matchName = p.name.toLowerCase().includes(query);
+            const matchDesc = p.desc.toLowerCase().includes(query);
+            const matchMuscle = (MUSCLE_NAMES[p.primaryMuscle] || '').toLowerCase().includes(query);
+            const matchEx = (exercisesByPattern[p.id] || []).some(e => e.name.toLowerCase().includes(query));
+            return matchName || matchDesc || matchMuscle || matchEx;
+        });
+    }
+
+    if (patternsList.length === 0) {
+        content.innerHTML = `
+            <div class="text-center py-8 text-xs text-zinc-500 italic bg-zinc-900/40 rounded-2xl border border-zinc-800">
+                Движения не найдены по запросу «${escapeHtml(filterQuery)}»
+            </div>
+        `;
+        return;
+    }
+
+    content.innerHTML = `
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            ${patternsList.map(pattern => {
+                const count = (exercisesByPattern[pattern.id] || []).length;
+                const muscleName = MUSCLE_NAMES[pattern.primaryMuscle] || pattern.primaryMuscle;
+                return `
+                <button type="button" onclick="window.openEquipmentWheel('${pattern.id}')"
+                    class="p-3 bg-zinc-900 hover:bg-zinc-850 active:scale-[0.98] border border-zinc-800/80 hover:border-brand/40 rounded-2xl text-left transition flex items-center gap-3 group">
+                    <div class="w-10 h-10 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-brand group-hover:border-brand/30 transition flex-shrink-0">
+                        <i data-lucide="${pattern.icon || 'dumbbell'}" class="w-5 h-5"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <div class="font-bold text-xs text-zinc-100 group-hover:text-brand transition truncate">
+                            ${pattern.name}
+                        </div>
+                        <div class="text-[10px] text-zinc-400 truncate mt-0.5">
+                            ${muscleName} • <span class="text-zinc-500">${pattern.desc}</span>
+                        </div>
+                        <div class="text-[9px] text-brand/80 font-medium mt-1">
+                            ${count} ${count === 1 ? 'вариант' : count < 5 ? 'варианта' : 'вариантов'} снарядов →
+                        </div>
+                    </div>
+                </button>
+                `;
+            }).join('')}
+        </div>
+    `;
+
+    lucide.createIcons();
+}
+
+export async function openEquipmentWheel(patternId) {
+    selectedMovementPatternId = patternId;
+    const pattern = MOVEMENT_PATTERNS[patternId] || { name: 'Движение', desc: '', icon: 'dumbbell' };
+
+    const backBtn = document.getElementById('movement-picker-back-btn');
+    const titleEl = document.getElementById('movement-picker-title');
+    const subtitleEl = document.getElementById('movement-picker-subtitle');
+    const searchContainer = document.getElementById('movement-picker-search-container');
+    const content = document.getElementById('movement-picker-content');
+
+    if (backBtn) backBtn.classList.remove('hidden');
+    if (titleEl) titleEl.innerText = pattern.name;
+    if (subtitleEl) subtitleEl.innerText = `Выберите снаряд для выполнения (${MUSCLE_NAMES[pattern.primaryMuscle] || ''})`;
+    if (searchContainer) searchContainer.classList.add('hidden');
+
+    if (!content) return;
+
+    const exercises = await db.exercises.where('movementPattern').equals(patternId).toArray();
+    exercises.sort((a, b) => a.name.localeCompare(b.name));
+
+    const currentExSelect = document.getElementById('active-exercise-select');
+    const currentExId = currentExSelect ? parseInt(currentExSelect.value) : null;
+
+    const logs = await db.workoutLogs.toArray();
+    const lastResultByEx = {};
+
+    exercises.forEach(ex => {
+        const exLogs = logs.filter(l => l.exerciseId === ex.id);
+        if (exLogs.length > 0) {
+            exLogs.sort((a, b) => b.date.localeCompare(a.date));
+            const latest = exLogs[0];
+            lastResultByEx[ex.id] = {
+                date: latest.date,
+                weight: latest.weight,
+                reps: latest.reps
+            };
+        }
+    });
+
+    if (exercises.length === 0) {
+        content.innerHTML = `
+            <div class="text-center py-8 text-xs text-zinc-500 italic bg-zinc-900/40 rounded-2xl border border-zinc-800 space-y-2">
+                <p>Для этого паттерна пока нет добавленных упражнений.</p>
+                <button type="button" onclick="window.backToMovementPatterns()" class="text-brand hover:underline font-semibold text-xs">
+                    ← Вернуться к движениям
+                </button>
+            </div>
+        `;
+        lucide.createIcons();
+        return;
+    }
+
+    content.innerHTML = `
+        <div class="space-y-3">
+            <!-- Центральный хаб движения -->
+            <div class="bg-gradient-to-r from-emerald-950/40 via-zinc-900 to-zinc-900 p-3.5 rounded-2xl border border-brand/30 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-brand/10 border border-brand/30 flex items-center justify-center text-brand flex-shrink-0">
+                        <i data-lucide="${pattern.icon || 'dumbbell'}" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <div class="text-[9px] uppercase tracking-wider font-extrabold text-brand">Биомеханический паттерн</div>
+                        <div class="font-bold text-sm text-zinc-100">${pattern.name}</div>
+                        <div class="text-[10px] text-zinc-400 mt-0.5">${pattern.desc}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-[10px] text-zinc-400 font-bold uppercase tracking-wider px-1">
+                Выберите снаряд / тренажер:
+            </div>
+
+            <!-- Колесо вариантов снарядов -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                ${exercises.map(ex => {
+                    const equip = EQUIPMENT_INFO[ex.equipment] || { name: 'Снаряд', icon: 'dumbbell', short: 'Снаряд' };
+                    const isSelected = ex.id === currentExId;
+                    const res = lastResultByEx[ex.id];
+
+                    let historyBadge = '';
+                    if (res) {
+                        const dateObj = new Date(res.date);
+                        const fDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+                        const wText = ex.usesBodyweight ? `св ${res.weight > 0 ? '+' + res.weight : res.weight < 0 ? res.weight : ''}` : `${res.weight} кг`;
+                        historyBadge = `
+                            <div class="text-[10px] text-zinc-300 font-mono mt-1 flex items-center gap-1.5">
+                                <span class="text-zinc-500">Было:</span>
+                                <span class="font-bold text-brand">${wText} × ${res.reps}</span>
+                                <span class="text-[9px] text-zinc-500">(${fDate})</span>
+                            </div>
+                        `;
+                    } else {
+                        historyBadge = `
+                            <div class="text-[10px] text-zinc-500 font-mono mt-1">
+                                🌟 Еще не выполнялось
+                            </div>
+                        `;
+                    }
+
+                    return `
+                    <button type="button" onclick="window.selectExerciseFromWheel(${ex.id})"
+                        class="p-3.5 ${isSelected ? 'bg-emerald-950/40 border-brand/60 ring-1 ring-brand/30' : 'bg-zinc-900 hover:bg-zinc-850 border-zinc-800/80 hover:border-zinc-700'} active:scale-[0.98] border rounded-2xl text-left transition flex items-start gap-3 group">
+                        <div class="w-9 h-9 rounded-xl ${isSelected ? 'bg-brand text-black' : 'bg-zinc-950 text-zinc-300 group-hover:text-brand border border-zinc-800'} flex items-center justify-center flex-shrink-0 transition mt-0.5">
+                            <i data-lucide="${equip.icon}" class="w-4 h-4"></i>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center justify-between gap-1">
+                                <span class="text-[9px] uppercase tracking-wider font-extrabold ${isSelected ? 'text-brand' : 'text-zinc-400'} truncate">
+                                    ${equip.name}
+                                </span>
+                                ${isSelected ? '<span class="text-[9px] text-brand font-bold uppercase tracking-wider bg-brand/10 px-1.5 py-0.5 rounded">Выбрано</span>' : ''}
+                            </div>
+                            <div class="font-bold text-xs text-zinc-100 group-hover:text-zinc-50 transition truncate mt-0.5">
+                                ${ex.name}
+                            </div>
+                            ${historyBadge}
+                        </div>
+                    </button>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+    `;
+
+    lucide.createIcons();
+}
+
+export function backToMovementPatterns() {
+    openMovementPickerModal();
+}
+
+export async function selectExerciseFromWheel(exerciseId) {
+    const select = document.getElementById('active-exercise-select');
+    if (select) {
+        select.value = exerciseId;
+        await onActiveExerciseChange();
+    }
+    closeMovementPickerModal();
+    const ex = await db.exercises.get(exerciseId);
+    showToast(`Выбрано: ${ex ? ex.name : 'Упражнение'}`, 'success');
+}
+
+export async function onMovementPickerSearch() {
+    const searchInput = document.getElementById('movement-picker-search');
+    const query = searchInput ? searchInput.value : '';
+    await renderMovementPatterns(query);
+}
+
 // Привязка к window для поддержки onclick в HTML разметке
 window.adjustValue = adjustValue;
 window.startWorkoutSession = startWorkoutSession;
@@ -1215,6 +1631,7 @@ window.deleteWorkoutSessionFromDetail = deleteWorkoutSessionFromDetail;
 window.toggleEditWorkoutSession = toggleEditWorkoutSession;
 window.updateEditingSetWeight = updateEditingSetWeight;
 window.updateEditingSetReps = updateEditingSetReps;
+window.updateEditingSetComment = updateEditingSetComment;
 window.addSetToEditList = addSetToEditList;
 window.removeSetFromEditList = removeSetFromEditList;
 window.addExerciseToEditSession = addExerciseToEditSession;
@@ -1227,3 +1644,12 @@ window.openSwapExerciseModal = openSwapExerciseModal;
 window.closeSwapExerciseModal = closeSwapExerciseModal;
 window.renderSwapExerciseList = renderSwapExerciseList;
 window.performExerciseSwap = performExerciseSwap;
+window.setExercisePickerMode = setExercisePickerMode;
+window.saveDefaultExerciseViewMode = saveDefaultExerciseViewMode;
+window.openMovementPickerModal = openMovementPickerModal;
+window.closeMovementPickerModal = closeMovementPickerModal;
+window.openEquipmentWheel = openEquipmentWheel;
+window.backToMovementPatterns = backToMovementPatterns;
+window.selectExerciseFromWheel = selectExerciseFromWheel;
+window.onMovementPickerSearch = onMovementPickerSearch;
+window.promptEditComment = promptEditComment;

@@ -57,12 +57,34 @@ export function getProgressionAdvice(allLogs, exercise, bodyWeight) {
         ? { date: recentBestSet.date, weight: recentBestSet.weight, reps: recentBestSet.reps, oneRM: recentMax1RM }
         : null;
 
+    // Поиск последнего комментария / заметки к этому упражнению
+    let lastComment = null;
+    const lastSessionWithComment = lastSessionLogs.filter(l => l.comment && l.comment.trim());
+    if (lastSessionWithComment.length > 0) {
+        lastComment = {
+            text: lastSessionWithComment[lastSessionWithComment.length - 1].comment.trim(),
+            date: lastTrainingDate,
+            isFromLastSession: true
+        };
+    } else {
+        const priorLogsWithComment = allLogs.filter(l => l.date !== todayStr && l.comment && l.comment.trim());
+        if (priorLogsWithComment.length > 0) {
+            priorLogsWithComment.sort((a, b) => b.date.localeCompare(a.date));
+            lastComment = {
+                text: priorLogsWithComment[0].comment.trim(),
+                date: priorLogsWithComment[0].date,
+                isFromLastSession: false
+            };
+        }
+    }
+
     return {
         type: 'advice',
         lastTrainingDate,
         bestSet,
         max1RM,
         recentBest,
+        lastComment,
         usesBodyweight: !!exercise.usesBodyweight,
         progression: {
             priorityWeight: bestSet.weight + 2.5,

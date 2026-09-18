@@ -1,0 +1,69 @@
+[
+  {
+    "label": "🚀 Dev: Запустить Vite сервер",
+    "command": "npm run dev",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "hide": "never",
+    "save": "all"
+  },
+  {
+    "label": "📦 Build: Сборка продакшена",
+    "command": "npm run build",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "hide": "never",
+    "save": "all"
+  },
+  {
+    "label": "👁️ Preview: Предпросмотр сборки",
+    "command": "npm run preview",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "hide": "never"
+  },
+  {
+    "label": "🧹 Clean & Rebuild: Очистить dist и пересобрать",
+    "command": "rm -rf dist && npm run build",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "hide": "never",
+    "save": "all"
+  },
+  {
+    "label": "📥 NPM: Установить зависимости",
+    "command": "npm install",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "hide": "never"
+  },
+  {
+    "label": "🔍 Git: Статус изменений",
+    "command": "git status",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true,
+    "reveal": "always",
+    "hide": "never"
+  },
+  {
+    "label": "📝 Git: Diff (просмотр правок)",
+    "command": "git diff",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true,
+    "reveal": "always",
+    "hide": "never"
+  },
+  {
+    "label": "📜 Git: Лог последних коммитов",
+    "command": "git log --oneline -n 15",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true,
+    "reveal": "always",
+    "hide": "never"
+  }
+]

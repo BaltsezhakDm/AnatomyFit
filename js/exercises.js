@@ -1,5 +1,5 @@
 import Chart from 'chart.js/auto';
-import { db, getBodyWeight } from './db.js';
+import { db, getBodyWeight, EQUIPMENT_INFO, MOVEMENT_PATTERNS } from './db.js';
 import { showToast, showConfirm } from './ui.js';
 import { MUSCLE_NAMES, updateStatistics } from './stats.js';
 import { calculate1RM, getEffectiveWeight } from './core/exercise.js';
@@ -10,6 +10,47 @@ import { buildActiveSessionUI, loadWorkoutHistory } from './workout.js';
 export let editingExerciseId = null;
 export let activeExerciseCharts = {};
 export let activeLoads = {}; // Содержит проценты нагрузок: { lats: 40, traps: 35, ... }
+
+export function detectPatternAndEquipment(name, primaryMuscle, usesBodyweight) {
+    const n = name.toLowerCase();
+    let movementPattern = 'other';
+    let equipment = usesBodyweight ? 'bodyweight' : 'barbell';
+
+    if (n.includes('жим') && (n.includes('стоя') || n.includes('плеч') || n.includes('армейск') || primaryMuscle === 'front_delts')) {
+        movementPattern = 'overhead_press';
+    } else if (n.includes('жим') && (n.includes('лежа') || n.includes('груд') || primaryMuscle === 'chest')) {
+        movementPattern = 'bench_press';
+    } else if (n.includes('подтягиван') || n.includes('верхн') || (n.includes('тяга') && n.includes('груд'))) {
+        movementPattern = 'pull_down';
+    } else if (n.includes('тяга') && (n.includes('наклон') || n.includes('пояс') || n.includes('горизонт'))) {
+        movementPattern = 'row';
+    } else if (n.includes('присед') || n.includes('ног') || primaryMuscle === 'quads') {
+        movementPattern = 'squat';
+    } else if (n.includes('станов') || n.includes('румынск') || (n.includes('тяга') && (primaryMuscle === 'hamstrings' || primaryMuscle === 'erectors'))) {
+        movementPattern = 'deadlift';
+    } else if (n.includes('мах') || primaryMuscle === 'side_delts') {
+        movementPattern = 'lateral_raise';
+    } else if (n.includes('бицепс') || primaryMuscle === 'biceps') {
+        movementPattern = 'biceps_curl';
+    } else if (n.includes('трицепс') || n.includes('брусь') || n.includes('француз') || primaryMuscle === 'triceps') {
+        movementPattern = 'triceps_ext';
+    } else if (n.includes('пресс') || n.includes('скручиван') || primaryMuscle === 'abs') {
+        movementPattern = 'abs';
+    } else if (n.includes('мостик') || primaryMuscle === 'glutes') {
+        movementPattern = 'glutes';
+    } else if (n.includes('икр') || primaryMuscle === 'calves') {
+        movementPattern = 'calves';
+    }
+
+    if (n.includes('гантел')) equipment = 'dumbbell';
+    else if (n.includes('рычаж') || n.includes('тренажер') || n.includes('хамм')) equipment = 'lever';
+    else if (n.includes('блок') || n.includes('кроссовер') || n.includes('канат')) equipment = 'cable';
+    else if (n.includes('смит')) equipment = 'smith';
+    else if (usesBodyweight) equipment = 'bodyweight';
+    else if (n.includes('штанг')) equipment = 'barbell';
+
+    return { movementPattern, equipment };
+}
 
 export function openExerciseForm() {
     const wrapper = document.getElementById('exercise-form-wrapper');
@@ -287,6 +328,7 @@ export async function createCustomExercise() {
             if (exExists) idToUpdate = String(editingExerciseId);
         }
 
+        const detected = detectPatternAndEquipment(name, primaryMuscle, usesBodyweight);
         await db.exercises.update(idToUpdate, {
             name,
             primaryMuscle,
@@ -295,7 +337,9 @@ export async function createCustomExercise() {
             tertiaryMuscle,
             tertiaryCoeff,
             usesBodyweight,
-            muscleLoads
+            muscleLoads,
+            movementPattern: detected.movementPattern,
+            equipment: detected.equipment
         });
 
         savedId = idToUpdate;
@@ -307,6 +351,7 @@ export async function createCustomExercise() {
             return;
         }
 
+        const detected = detectPatternAndEquipment(name, primaryMuscle, usesBodyweight);
         const newId = await db.exercises.add({
             name,
             primaryMuscle,
@@ -316,7 +361,9 @@ export async function createCustomExercise() {
             tertiaryCoeff,
             isCustom: 1,
             usesBodyweight,
-            muscleLoads
+            muscleLoads,
+            movementPattern: detected.movementPattern,
+            equipment: detected.equipment
         });
 
         savedId = newId;
@@ -527,6 +574,13 @@ export async function loadAllExercisesList() {
             </span>
         ` : '';
 
+        const equip = EQUIPMENT_INFO[item.equipment];
+        const equipTag = equip ? `
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-zinc-800/80 border border-zinc-700/40 text-[9px] rounded font-medium text-zinc-300">
+                <i data-lucide="${equip.icon}" class="w-2.5 h-2.5 text-brand"></i> ${equip.short || equip.name}
+            </span>
+        ` : '';
+
         return `
             <div id="exercise-card-${item.id}" class="bg-zinc-900 rounded-xl border border-zinc-800/30 overflow-hidden transition-all duration-200 hover:border-zinc-700/50">
                 <div onclick="window.toggleExerciseHistory(${item.id})" class="px-3 py-2.5 flex justify-between items-center text-xs cursor-pointer hover:bg-zinc-800/40 transition">
@@ -537,6 +591,7 @@ export async function loadAllExercisesList() {
                         </span>
                         <div class="flex flex-wrap gap-1.5 items-center">
                             ${bwTag}
+                            ${equipTag}
                             ${tagsHtml}
                         </div>
                     </div>
