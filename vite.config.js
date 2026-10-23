@@ -2,8 +2,11 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import tailwindcss from '@tailwindcss/vite';
 
+// Для GitHub Pages приложение живёт в подкаталоге; в Docker/GitLab-деплое — в корне домена (VITE_BASE=/)
+const base = process.env.VITE_BASE || '/AnatomyFit/';
+
 export default defineConfig({
-  base: '/AnatomyFit/',
+  base,
   plugins: [
     tailwindcss(),
     VitePWA({
@@ -13,8 +16,8 @@ export default defineConfig({
         name: 'AnatomyFit — Аналитика Прогрессии Нагрузок',
         short_name: 'AnatomyFit',
         description: 'Анатомический дневник тренировок с автоматическими советами по прогрессии нагрузки',
-        start_url: '/AnatomyFit/',
-        scope: '/AnatomyFit/',
+        start_url: base,
+        scope: base,
         display: 'standalone',
         background_color: '#09090b',
         theme_color: '#10b981',

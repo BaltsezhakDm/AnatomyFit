@@ -1,10 +1,22 @@
-# Замените :80 на ваш домен (например, fit.yourdomain.ru) для автоматического получения SSL Let's Encrypt
-:80 {
+# Адрес сайта и TLS задаются переменными окружения (см. docker-compose.yml):
+#   SITE_ADDRESS=fit.example.com        -> HTTPS на 443
+#   SITE_ADDRESS=fit.example.com:8443   -> HTTPS на нестандартном порту (если 443 занят)
+#   TLS_ISSUER=internal                 -> самоподписанный сертификат Caddy (пока нет DNS-записи)
+#   TLS_ISSUER=acme                     -> сертификат Let's Encrypt (нужна A-запись домена и открытый порт 80)
+{$SITE_ADDRESS:localhost} {
+    tls {
+        issuer {$TLS_ISSUER:internal}
+    }
+
     # Сжатие ответов (gzip, zstd)
     encode gzip zstd
 
     # Проксирование API запросов на бекенд
     handle /api/* {
+        reverse_proxy api:3001
+    }
+
+    handle /health {
         reverse_proxy api:3001
     }
 
@@ -14,9 +26,11 @@
         file_server
     }
 
-    # Раздача статики PWA (HTML, JS, CSS)
+    # Раздача статики PWA (HTML, JS, CSS); service worker и index.html не кэшируем
     handle {
         root * /srv
+        @nocache path /sw.js /index.html /manifest.webmanifest
+        header @nocache Cache-Control "no-cache"
         file_server
         try_files {path} /index.html
     }

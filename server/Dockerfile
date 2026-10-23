@@ -27,6 +27,8 @@ COPY package.json ./
 RUN npm install --omit=dev
 
 COPY --from=builder /app/dist ./dist
+# SQL-миграции drizzle: применяются при старте сервера (src/db/migrate.ts)
+COPY drizzle ./drizzle
 COPY --from=builder /app/src/db ./dist/db
 
 # Создаем папки для монтирования томов базы данных и загрузок

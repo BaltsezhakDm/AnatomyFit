@@ -66,6 +66,20 @@ export async function buildApp(): Promise<FastifyInstance> {
     decorateReply: false,
   });
 
+  // 4a. Фронтенд (PWA): service worker и index.html не кэшируем, иначе обновления приложения не доезжают до клиентов
+  if (config.webDir && fs.existsSync(config.webDir)) {
+    await app.register(fastifyStatic, {
+      root: config.webDir,
+      prefix: '/',
+      setHeaders: (res, filePath) => {
+        const name = path.basename(filePath);
+        if (name === 'sw.js' || name === 'index.html' || name === 'manifest.webmanifest') {
+          res.header('Cache-Control', 'no-cache');
+        }
+      },
+    });
+  }
+
   // 5. Healthcheck
   app.get('/health', async () => {
     return {

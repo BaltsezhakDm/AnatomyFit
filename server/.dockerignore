@@ -1,0 +1,8 @@
+node_modules
+dist
+data
+uploads
+.env
+.env.*
+*.sqlite*
+src/tests

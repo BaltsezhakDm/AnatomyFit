@@ -1,6 +1,7 @@
 services:
   # Бекенд сервис AnatomyFit (Fastify + SQLite)
   api:
+    image: anatomyfit-api:latest # образ можно собрать локально и загрузить на сервер (docker save | ssh ... docker load)
     build:
       context: ./server
       dockerfile: Dockerfile
@@ -15,7 +16,8 @@ services:
       # Обязателен: контейнер не запустится без секрета (минимум 32 символа, задаётся в .env рядом с docker-compose.yml)
       - JWT_SECRET=${JWT_SECRET:?Задайте JWT_SECRET (минимум 32 символа) в .env}
       - TRUST_PROXY=true
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost,https://your-domain.com}
+      # Точный origin сайта вместе с портом, например https://fit.example.com:8443
+      - CORS_ORIGIN=${CORS_ORIGIN:?Задайте CORS_ORIGIN (origin сайта, например https://fit.example.com) в .env}
     volumes:
       # Постоянное хранилище базы SQLite и медиафайлов на хосте VPS
       - ./server/data:/app/data
@@ -29,9 +31,13 @@ services:
     image: caddy:alpine
     container_name: anatomyfit_caddy
     restart: unless-stopped
+    environment:
+      # SITE_ADDRESS: домен (с портом, если HTTPS не на 443), TLS_ISSUER: internal (самоподписанный) или acme (Let's Encrypt)
+      - SITE_ADDRESS=${SITE_ADDRESS:-localhost}
+      - TLS_ISSUER=${TLS_ISSUER:-internal}
     ports:
-      - "80:80"
-      - "443:443"
+      - "80:80" # HTTP-01 проверка Let's Encrypt и редирект на HTTPS
+      - "${HTTPS_PORT:-443}:${HTTPS_PORT:-443}"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./dist:/srv:ro

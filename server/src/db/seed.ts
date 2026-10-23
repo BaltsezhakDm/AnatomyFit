@@ -131,7 +131,9 @@ export async function seedDatabase() {
 
 // Запуск напрямую через tsx
 if (process.argv[1]?.endsWith('seed.ts')) {
-  seedDatabase()
+  import('./migrate.js')
+    .then(m => m.prepareDatabase()) // схема должна существовать до сидирования
+    .then(() => seedDatabase())
     .then(() => process.exit(0))
     .catch((err) => {
       console.error('❌ Ошибка сидирования:', err);

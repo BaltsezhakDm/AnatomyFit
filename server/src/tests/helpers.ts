@@ -14,15 +14,10 @@ export async function createTestApp() {
   process.env.JWT_SECRET = 'test-secret-test-secret-test-secret-00';
 
   const { buildApp } = await import('../app.js');
-  const { sqlite, schema } = await import('../db/index.js');
-  const { generateSQLiteDrizzleJson, generateSQLiteMigration } = await import('drizzle-kit/api');
-
-  // Создаём таблицы из schema.ts (то же, что делает `drizzle-kit push` для пустой базы)
-  const empty = await generateSQLiteDrizzleJson({});
-  const current = await generateSQLiteDrizzleJson(schema);
-  for (const statement of await generateSQLiteMigration(empty, current)) {
-    sqlite.exec(statement);
-  }
+  const { sqlite } = await import('../db/index.js');
+  // Схема создаётся реальными миграциями — тесты заодно проверяют, что они применяются на пустой базе
+  const { prepareDatabase } = await import('../db/migrate.js');
+  await prepareDatabase();
 
   const { registerLimiter, loginLimiter } = await import('../modules/auth/auth.routes.js');
   const app = await buildApp();

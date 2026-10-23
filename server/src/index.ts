@@ -1,8 +1,10 @@
 import { buildApp } from './app.js';
 import { config } from './config/index.js';
 import { sqlite } from './db/index.js';
+import { prepareDatabase } from './db/migrate.js';
 
 async function main() {
+  await prepareDatabase();
   const app = await buildApp();
 
   const shutdown = async (signal: string) => {

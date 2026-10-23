@@ -38,6 +38,9 @@ export const config = {
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
   },
 
+  // Каталог со сборкой PWA (vite build): если задан и существует, API-сервер отдаёт и фронтенд — один контейнер на всё
+  webDir: process.env.WEB_DIR ? path.resolve(process.env.WEB_DIR) : null,
+
   upload: {
     dir: path.resolve(process.cwd(), process.env.UPLOAD_DIR || 'uploads'),
     maxFileSizeBytes: parseInt(process.env.MAX_FILE_SIZE_BYTES || '104857600', 10), // 100 MB default
