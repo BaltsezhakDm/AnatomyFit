@@ -1,0 +1,11 @@
+[Unit]
+Description=AnatomyFit: ежедневная резервная копия базы
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+# Если сервер был выключен в 03:15, копия сделается при следующем запуске
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

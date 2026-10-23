@@ -1,0 +1,8 @@
+[Unit]
+Description=AnatomyFit: резервная копия базы
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/afit/backup.sh
