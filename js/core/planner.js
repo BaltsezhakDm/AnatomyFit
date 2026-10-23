@@ -153,8 +153,10 @@ export function sessionsOf(logs, exercise, bodyWeight, today) {
         .map(([date, sets]) => {
             let best = null;
             for (const set of sets) {
-                const oneRM = calculate1RM(getEffectiveWeight(set.weight, exercise.usesBodyweight, bodyWeight), set.reps);
-                if (!best || oneRM > best.oneRM) best = { weight: set.weight, reps: set.reps, oneRM, rir: set.rir };
+                // 1ПМ «с учётом запаса»: подход с запасом k повторений равен k+reps повторам до отказа
+                const rir = set.rir ?? ASSUMED_LAST_RIR;
+                const oneRM = calculate1RM(getEffectiveWeight(set.weight, exercise.usesBodyweight, bodyWeight), set.reps + rir);
+                if (!best || oneRM > best.oneRM) best = { weight: set.weight, reps: set.reps, oneRM, rir };
             }
             return { date, sets, best };
         });
@@ -208,9 +210,7 @@ export function planExercise({ slot, exercise, logs, bodyWeight, profile, cycleI
     // это подтягивания с поддержкой, и рост нагрузки там означает уменьшение помощи
     const bw = exercise.usesBodyweight ? bodyWeight : 0;
     const lastEffective = lastWeight + bw;
-    // 1ПМ «с учётом запаса»: подход, законченный с запасом в k повторений, соответствует k+reps повторам до отказа
-    const lastRir = last.best.rir ?? ASSUMED_LAST_RIR;
-    const oneRM = (lastWeight + bw) * (1 + (last.best.reps + lastRir) / 30);
+    const oneRM = last.best.oneRM; // уже учитывает запас повторений (заданный RIR или предположение)
     let note = null;
 
     let weight;

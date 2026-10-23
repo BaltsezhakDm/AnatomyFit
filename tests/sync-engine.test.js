@@ -161,3 +161,62 @@ test('pull + push: удаление программы синхронизиру�
     await applyPull({ programs: [{ id: 'remote-p', deletedAt: 9, updatedAt: 9 }] });
     assert.equal(await db.programs.where('uuid').equals('remote-p').count(), 0);
 });
+
+test('RIR подхода уходит в push и сохраняется при pull', async () => {
+    const ex = await seedExercise();
+    const id = await db.workoutLogs.add({ date: '2026-01-01', exerciseId: ex.id, weight: 50, reps: 8, sessionId: 1792787442600, rir: 2 });
+    const log = await db.workoutLogs.get(id);
+    const { push } = await collectPush(0);
+    assert.equal(push.workoutSets.find(s => s.id === log.uuid).rir, 2);
+
+    await db.workoutLogs.clear();
+    await applyPull({ workoutSets: [{ id: 'remote-rir', sessionId: sessionUuidFromLocalId(1792787442600), exerciseId: ex.uuid, weight: 60, reps: 5, rir: 1, logDate: '2026-01-02', updatedAt: 5 }] });
+    assert.equal((await db.workoutLogs.where('uuid').equals('remote-rir').first()).rir, 1);
+});
+
+test('план программы: слоты, цикл и «тренировок в неделю» синхронизируются в обе стороны', async () => {
+    const a = await seedExercise({ name: 'A' });
+    const b = await seedExercise({ name: 'B' });
+    const cycle = { index: 2, weeks: 5, week: 4, startedAt: '2026-09-01', weekStartedAt: '2026-09-22', sessionsThisWeek: 1 };
+    const pid = await db.programs.add({
+        name: 'Push', exerciseIds: [a.id, b.id], sessionsPerWeek: 2, cycle,
+        slots: [{ exerciseId: a.id, role: 'main', sets: 4, repsMin: 5, repsMax: 8 }, { exerciseId: b.id, role: 'accessory', sets: 3, repsMin: null, repsMax: null }],
+    });
+    const program = await db.programs.get(pid);
+
+    const { push } = await collectPush(0);
+    const sent = push.programs.find(p => p.id === program.uuid);
+    assert.deepEqual(sent.plan.slots.map(s => s.exerciseId), [a.uuid, b.uuid]);
+    assert.equal(sent.plan.cycle.week, 4);
+
+    // «второе устройство»: программы нет, приходит с планом
+    await db.programs.clear();
+    await applyPull({ programs: [{ id: program.uuid, name: 'Push', exerciseIds: [a.uuid, b.uuid], plan: sent.plan, updatedAt: 9 }] });
+    const restored = await db.programs.where('uuid').equals(program.uuid).first();
+    assert.deepEqual(restored.slots.map(s => [s.exerciseId, s.role, s.sets]), [[a.id, 'main', 4], [b.id, 'accessory', 3]]);
+    assert.deepEqual(restored.cycle, cycle);
+    assert.equal(restored.sessionsPerWeek, 2);
+});
+
+test('pull программы без плана не стирает локальные слоты и цикл', async () => {
+    const a = await seedExercise({ name: 'A' });
+    const cycle = { index: 0, weeks: 5, week: 2, startedAt: '2026-09-01', weekStartedAt: '2026-09-08', sessionsThisWeek: 0 };
+    const pid = await db.programs.add({ name: 'Local', exerciseIds: [a.id], cycle, slots: [{ exerciseId: a.id, role: 'main', sets: 5 }] });
+    const program = await db.programs.get(pid);
+    await applyPull({ programs: [{ id: program.uuid, name: 'Renamed', exerciseIds: [a.uuid], plan: null, updatedAt: program.updatedAt + 1000 }] });
+    const after = await db.programs.get(pid);
+    assert.equal(after.name, 'Renamed');
+    assert.equal(after.cycle.week, 2);
+    assert.equal(after.slots[0].sets, 5);
+});
+
+test('удаление программы уходит без плана', async () => {
+    const pid = await db.programs.add({ name: 'Del', exerciseIds: [], cycle: { index: 0, weeks: 5, week: 1, startedAt: '2026-09-01', weekStartedAt: '2026-09-01', sessionsThisWeek: 0 } });
+    const program = await db.programs.get(pid);
+    await db.programs.delete(pid);
+    await tick();
+    const { push } = await collectPush(Number.MAX_SAFE_INTEGER);
+    const sent = push.programs.find(p => p.id === program.uuid);
+    assert.equal(sent.plan, null);
+    assert.ok(sent.deletedAt);
+});

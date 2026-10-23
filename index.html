@@ -250,6 +250,19 @@
                         </div>
                     </div>
 
+                    <!-- Запас повторений (RIR): необязательно, но делает цели плана точнее -->
+                    <div class="space-y-1">
+                        <label class="block text-xs text-zinc-400">Запас повторений (RIR) <span class="text-zinc-600">— необязательно</span></label>
+                        <div id="rir-selector" class="grid grid-cols-6 gap-1.5">
+                            <button type="button" data-rir="0" onclick="selectRir(0)" class="rir-btn min-h-10 rounded-lg text-xs font-mono font-bold bg-zinc-900 border border-zinc-800 text-zinc-300">0</button>
+                            <button type="button" data-rir="1" onclick="selectRir(1)" class="rir-btn min-h-10 rounded-lg text-xs font-mono font-bold bg-zinc-900 border border-zinc-800 text-zinc-300">1</button>
+                            <button type="button" data-rir="2" onclick="selectRir(2)" class="rir-btn min-h-10 rounded-lg text-xs font-mono font-bold bg-zinc-900 border border-zinc-800 text-zinc-300">2</button>
+                            <button type="button" data-rir="3" onclick="selectRir(3)" class="rir-btn min-h-10 rounded-lg text-xs font-mono font-bold bg-zinc-900 border border-zinc-800 text-zinc-300">3</button>
+                            <button type="button" data-rir="4" onclick="selectRir(4)" class="rir-btn min-h-10 rounded-lg text-xs font-mono font-bold bg-zinc-900 border border-zinc-800 text-zinc-300">4+</button>
+                            <button type="button" onclick="selectRir(null)" class="min-h-10 rounded-lg text-[10px] font-bold bg-zinc-900 border border-zinc-800 text-zinc-500" aria-label="Сбросить RIR">—</button>
+                        </div>
+                    </div>
+
                     <!-- Помощники быстрой корректировки -->
                     <div class="flex gap-3 justify-between py-1">
                         <div class="flex gap-2 flex-1">

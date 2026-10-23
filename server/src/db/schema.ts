@@ -78,6 +78,7 @@ export const programs = sqliteTable('programs', {
   description: text('description'),
   isPublic: integer('is_public').default(0).notNull(),
   exerciseIds: text('exercise_ids'), // JSON-массив UUID упражнений программы (в порядке выполнения)
+  plan: text('plan'), // JSON: настройки подходов (slots), неделя мезоцикла (cycle), тренировок в неделю
   updatedAt: integer('updated_at').notNull(),
   // Серверное время последнего применения изменения: курсор для pull, не зависит от часов клиентов
   syncedAt: integer('synced_at').default(0).notNull(),

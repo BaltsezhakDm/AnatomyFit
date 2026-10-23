@@ -199,3 +199,76 @@ test('удаление (deletedAt) доходит до pull как мягкое 
   const row = pulled.json().pull.bodyMeasurements.find((m: { id: string }) => m.id === id);
   assert.equal(row.deletedAt, 200);
 });
+
+const validPlan = (exerciseId: string) => ({
+  slots: [{ exerciseId, role: 'main', sets: 4, repsMin: 5, repsMax: 8 }, { exerciseId: `${exerciseId}-b`, role: 'accessory', sets: 3 }],
+  sessionsPerWeek: 2,
+  cycle: { index: 1, weeks: 5, week: 3, startedAt: '2026-10-01', weekStartedAt: '2026-10-15', sessionsThisWeek: 1 },
+});
+
+test('план программы (слоты, цикл, тренировок в неделю) сохраняется и возвращается в pull', async () => {
+  const alice = await t.register('alice');
+  const pid = uuid();
+  const plan = validPlan('ex-a');
+  const res = await t.sync(alice, { programs: [{ id: pid, name: 'Push', exerciseIds: ['ex-a'], plan, updatedAt: 1 }] });
+  assert.deepEqual(res.json().rejected, []);
+  const pulled = await t.sync(alice, {}, 0);
+  const program = pulled.json().pull.programs.find((p: { id: string }) => p.id === pid);
+  assert.equal(program.plan.cycle.week, 3);
+  assert.equal(program.plan.sessionsPerWeek, 2);
+  assert.equal(program.plan.slots[0].repsMin, 5);
+});
+
+test('некорректный план отклоняет только эту программу, остальные строки применяются', async () => {
+  const alice = await t.register('alice');
+  const bad = uuid(), good = uuid();
+  const res = await t.sync(alice, {
+    programs: [
+      { id: bad, name: 'Bad', plan: { slots: [{ exerciseId: 'x', role: 'hacker', sets: 3 }] }, updatedAt: 1 },
+      { id: good, name: 'Good', plan: { slots: [], cycle: { index: 0, weeks: 5, week: 99, startedAt: '2026-10-01', weekStartedAt: '2026-10-01', sessionsThisWeek: 0 } }, updatedAt: 1 },
+      { id: uuid(), name: 'Fine', plan: validPlan('ex-a'), updatedAt: 1 },
+    ],
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(rejectedFor(res, 'programs').length, 2, 'неверная роль и неделя вне диапазона');
+  assert.equal(t.sqlite.prepare('SELECT 1 FROM programs WHERE id = ?').get(bad), undefined);
+});
+
+test('клиент без поддержки плана (plan не передан) не затирает сохранённый план', async () => {
+  const alice = await t.register('alice');
+  const pid = uuid();
+  await t.sync(alice, { programs: [{ id: pid, name: 'Push', plan: validPlan('ex-a'), updatedAt: 1 }] });
+  await t.sync(alice, { programs: [{ id: pid, name: 'Push renamed', updatedAt: 2 }] });
+  const row = t.sqlite.prepare('SELECT name, plan FROM programs WHERE id = ?').get(pid) as { name: string; plan: string };
+  assert.equal(row.name, 'Push renamed');
+  assert.equal(JSON.parse(row.plan).cycle.week, 3);
+});
+
+test('чужой план нельзя перезаписать через id чужой программы', async () => {
+  const { alice, bob, programId } = await setup();
+  await t.sync(alice, { programs: [{ id: programId, name: 'Alice program', plan: validPlan('ex-a'), updatedAt: 2000 }] });
+  await t.sync(bob, { programs: [{ id: programId, name: 'HACKED', plan: { slots: [], cycle: null }, updatedAt: 9e12 }] });
+  const row = t.sqlite.prepare('SELECT name, plan FROM programs WHERE id = ?').get(programId) as { name: string; plan: string };
+  assert.equal(row.name, 'Alice program');
+  assert.equal(JSON.parse(row.plan).sessionsPerWeek, 2);
+});
+
+test('RIR подхода сохраняется и возвращается; значения вне допустимого вида не ломают батч', async () => {
+  const alice = await t.register('alice');
+  const sessionId = uuid(), setId = uuid();
+  t.sqlite.prepare(
+    "INSERT INTO exercises (id, user_id, name, category, movement_pattern, equipment, uses_bodyweight, is_custom, muscle_loads, is_favorite, updated_at) VALUES ('sys-rir', NULL, 'Sys', 'strength', 'other', 'barbell', 0, 0, '{}', 0, 1)"
+  ).run();
+  const res = await t.sync(alice, {
+    workoutSessions: [{ id: sessionId, updatedAt: 1 }],
+    workoutSets: [
+      { id: setId, sessionId, exerciseId: 'sys-rir', weight: 50, reps: 8, rir: 2, updatedAt: 1 },
+      { id: uuid(), sessionId, exerciseId: 'sys-rir', weight: 50, reps: 8, rir: null, updatedAt: 1 },
+    ],
+  });
+  assert.deepEqual(res.json().rejected, []);
+  const pulled = await t.sync(alice, {}, 0);
+  const sets = pulled.json().pull.workoutSets as { id: string; rir: number | null }[];
+  assert.equal(sets.find(s => s.id === setId)?.rir, 2);
+  assert.equal(sets.filter(s => s.rir === null).length, 1);
+});

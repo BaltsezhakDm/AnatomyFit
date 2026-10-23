@@ -64,6 +64,16 @@ document.addEventListener('visibilitychange', async () => {
     }
 });
 
+// Выбранный в форме запас повторений (null — не указан)
+let currentRir = null;
+
+export function selectRir(value) {
+    currentRir = value === null || value === undefined || currentRir === value ? null : Number(value);
+    document.querySelectorAll('#rir-selector .rir-btn').forEach(btn => {
+        btn.classList.toggle('is-selected', currentRir !== null && Number(btn.dataset.rir) === currentRir);
+    });
+}
+
 export function setActiveSession(val) {
     activeSession = val;
     if (val === null) {
@@ -394,14 +404,10 @@ export async function saveActiveSet() {
     const priorLogs = await db.workoutLogs.where('exerciseId').equals(exerciseId).toArray();
     const priorBest1RM = ex ? getBest1RM(priorLogs, ex, bodyWeight) : 0;
 
-    await db.workoutLogs.add({
-        date: todayStr,
-        exerciseId,
-        weight,
-        reps,
-        sessionId,
-        comment
-    });
+    const logEntry = { date: todayStr, exerciseId, weight, reps, sessionId, comment };
+    if (currentRir !== null) logEntry.rir = currentRir;
+    await db.workoutLogs.add(logEntry);
+    selectRir(null);
 
     if (commentInput) {
         commentInput.value = '';
@@ -429,7 +435,8 @@ export async function saveActiveSet() {
     await loadTodayLogs();
     await updateStatistics();
     await updateProgressionAdvice(exerciseId);
-    await renderExercisePlan(activeSession, exerciseId);
+    // Следующий подход плана подставляется в поля сразу после записи предыдущего
+    await renderExercisePlan(activeSession, exerciseId, { autoFill: true });
 
     // Запускаем таймер отдыха на настроенную длительность
     startRestTimer(getRestDuration());
@@ -685,6 +692,7 @@ export async function loadTodayLogs() {
                     <div class="flex items-center gap-1.5 min-w-0">
                         <span class="text-[9px] font-mono text-zinc-500 w-3">${idx + 1}</span>
                         <span class="font-mono text-xs font-bold text-zinc-100">${log.weight} × ${log.reps}</span>
+                        ${log.rir !== undefined && log.rir !== null ? `<span class="text-[9px] font-mono text-zinc-500">RIR ${log.rir}</span>` : ''}
                     </div>
                     <div class="flex items-center gap-1">
                         <button onclick="window.promptEditComment(${log.id})" class="text-zinc-500 hover:text-brand transition p-1 -m-0.5" title="${log.comment ? 'Изменить заметку' : 'Добавить заметку'}">
@@ -1229,7 +1237,8 @@ export async function saveWorkoutSessionEdits() {
         weight: log.weight,
         reps: log.reps,
         sessionId: sessionToSaveId,
-        comment: log.comment || ''
+        comment: log.comment || '',
+        ...(log.rir !== undefined && log.rir !== null ? { rir: log.rir } : {})
     }));
 
     if (newLogs.length > 0) {
@@ -1660,6 +1669,7 @@ export async function onMovementPickerSearch() {
 window.adjustValue = adjustValue;
 window.startWorkoutSession = startWorkoutSession;
 window.selectActiveExercise = selectActiveExercise;
+window.selectRir = selectRir;
 window.saveActiveSet = saveActiveSet;
 window.adjustTimer = adjustTimer;
 window.toggleTimer = toggleTimer;

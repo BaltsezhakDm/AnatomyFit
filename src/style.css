@@ -132,3 +132,10 @@ textarea:focus:not(:focus-visible) {
 #progression-advisor-card.has-plan .progression-options {
   display: none;
 }
+
+/* Выбранное значение RIR в форме подхода */
+.rir-btn.is-selected {
+  background: rgb(16 185 129 / 0.15);
+  border-color: rgb(16 185 129 / 0.5);
+  color: #34d399;
+}

@@ -177,7 +177,7 @@ async function cachedPlan(programId) {
  * Показывает план текущего упражнения: цели по подходам, выполненные подходы и кнопку подстановки.
  * @param {object|null} session активная тренировка (из workout.js)
  */
-export async function renderExercisePlan(session, exerciseId) {
+export async function renderExercisePlan(session, exerciseId, { autoFill = false } = {}) {
     const container = document.getElementById('exercise-plan-card');
     if (!container) return;
     planContext = null;
@@ -214,7 +214,8 @@ export async function renderExercisePlan(session, exerciseId) {
         const target = entry.status === 'needs_baseline'
             ? `${set.reps} повт.`
             : `${formatWeight(set.weight, exercise)} × ${set.reps}`;
-        const actual = log ? `<span class="text-brand font-mono">✓ ${formatWeight(log.weight, exercise)} × ${log.reps}</span>` : '';
+        const actualRir = log && log.rir !== undefined && log.rir !== null ? ` · RIR ${log.rir}` : '';
+        const actual = log ? `<span class="text-brand font-mono">✓ ${formatWeight(log.weight, exercise)} × ${log.reps}${actualRir}</span>` : '';
         return `
             <div class="flex items-center justify-between gap-2 text-xs ${state} ${isNext ? 'bg-brand/10 border border-brand/20 rounded-lg px-2 py-1' : 'px-2 py-0.5'}">
                 <span>Подход ${i + 1}${isNext ? ' · сейчас' : ''}</span>
@@ -243,10 +244,13 @@ export async function renderExercisePlan(session, exerciseId) {
             <i data-lucide="corner-down-right" class="w-3.5 h-3.5"></i> Подставить цель (подход ${nextIndex + 1})
         </button>` : ''}`;
     if (window.lucide) window.lucide.createIcons();
+
+    // Автоподстановка: после записи подхода в поля сразу попадает цель следующего — по тому же правилу, что и кнопка
+    if (autoFill && canApply) applyPlanTarget({ silent: true });
 }
 
 /** Подставляет цель следующего подхода в поля ввода — только по нажатию кнопки. */
-export function applyPlanTarget() {
+export function applyPlanTarget({ silent = false } = {}) {
     if (!planContext || planContext.nextIndex === null) return;
     const { entry, nextIndex, exercise } = planContext;
     const set = entry.sets[nextIndex];
@@ -254,7 +258,7 @@ export function applyPlanTarget() {
     const repsInput = document.getElementById('input-reps');
     if (weightInput && set.weight !== null) weightInput.value = set.weight;
     if (repsInput) repsInput.value = set.reps;
-    showToast(`Подставлено: ${formatWeight(set.weight, exercise)} × ${set.reps}`, 'info');
+    if (!silent) showToast(`Подставлено: ${formatWeight(set.weight, exercise)} × ${set.reps}`, 'info');
 }
 
 window.renderCycleCard = renderCycleCard;

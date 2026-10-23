@@ -78,6 +78,7 @@ export function mapLogToServer(log, exerciseIdToUUID, setOrder = 1, deletedAt = 
         setType: 'normal',
         weight: log.weight,
         reps: log.reps,
+        rir: log.rir ?? null,
         comment: log.comment || null,
         logDate: log.date,
         completedAt: log.updatedAt || Date.now(),
@@ -99,6 +100,32 @@ export function buildSessions(sessionLogs) {
     return [...sessions.values()];
 }
 
+/** План программы для сервера: слоты по UUID упражнений, неделя мезоцикла, тренировок в неделю; null — настроек нет. */
+export function buildPlanPayload(program, exerciseIdToUUID) {
+    const slots = (program.slots || [])
+        .map(slot => {
+            const exerciseId = exerciseIdToUUID.get(slot.exerciseId);
+            if (!exerciseId) return null;
+            const entry = { exerciseId, role: slot.role === 'main' ? 'main' : 'accessory', sets: slot.sets };
+            if (slot.repsMin != null && slot.repsMax != null) { entry.repsMin = slot.repsMin; entry.repsMax = slot.repsMax; }
+            if (slot.step) entry.step = slot.step;
+            return entry;
+        })
+        .filter(Boolean);
+    const cycle = program.cycle
+        ? {
+            index: program.cycle.index,
+            weeks: program.cycle.weeks,
+            week: program.cycle.week,
+            startedAt: program.cycle.startedAt,
+            weekStartedAt: program.cycle.weekStartedAt,
+            sessionsThisWeek: program.cycle.sessionsThisWeek || 0,
+        }
+        : null;
+    if (slots.length === 0 && !cycle && !program.sessionsPerWeek) return null;
+    return { slots, cycle, sessionsPerWeek: program.sessionsPerWeek || null };
+}
+
 /** Программа -> серверная модель; упражнения без известного UUID пропускаются. */
 export function mapProgramToServer(program, exerciseIdToUUID, deletedAt = null) {
     const exerciseIds = (program.exerciseIds || []).map(id => exerciseIdToUUID.get(id)).filter(Boolean);
@@ -106,9 +133,30 @@ export function mapProgramToServer(program, exerciseIdToUUID, deletedAt = null) 
         id: program.uuid,
         name: program.name,
         exerciseIds,
+        plan: deletedAt ? null : buildPlanPayload(program, exerciseIdToUUID),
         updatedAt: deletedAt || program.updatedAt || Date.now(),
         deletedAt,
     };
+}
+
+/** План с сервера -> локальные поля программы (слоты с локальными id); unknown — слоты на ещё не загруженные упражнения. */
+export function resolvePlan(plan, uuidToExerciseId) {
+    if (!plan) return null;
+    let unknown = 0;
+    const slots = [];
+    for (const slot of plan.slots || []) {
+        const exerciseId = uuidToExerciseId.get(slot.exerciseId);
+        if (exerciseId === undefined) { unknown++; continue; }
+        slots.push({
+            exerciseId,
+            role: slot.role === 'main' ? 'main' : 'accessory',
+            sets: slot.sets,
+            repsMin: slot.repsMin ?? null,
+            repsMax: slot.repsMax ?? null,
+            ...(slot.step ? { step: slot.step } : {}),
+        });
+    }
+    return { slots, cycle: plan.cycle || undefined, sessionsPerWeek: plan.sessionsPerWeek || undefined, unknown };
 }
 
 /** UUID упражнений программы -> локальные id; unknown — сколько упражнений ещё не загружено локально. */

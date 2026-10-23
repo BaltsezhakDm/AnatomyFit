@@ -18,6 +18,35 @@ const num = z.coerce.number().finite();
 const optNum = z.coerce.number().finite().nullish();
 const text = z.string().max(5000).nullish();
 
+const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/** Адаптивный план программы: слоты (по UUID упражнений), неделя мезоцикла и число тренировок в неделю. */
+const planSchema = z.object({
+  slots: z
+    .array(
+      z.object({
+        exerciseId: id,
+        role: z.enum(['main', 'accessory']),
+        sets: z.number().int().min(1).max(20),
+        repsMin: z.number().int().min(1).max(100).nullish(),
+        repsMax: z.number().int().min(1).max(100).nullish(),
+        step: z.number().positive().max(100).nullish(),
+      })
+    )
+    .max(100),
+  sessionsPerWeek: z.number().int().min(1).max(14).nullish(),
+  cycle: z
+    .object({
+      index: z.number().int().min(0).max(10_000),
+      weeks: z.number().int().min(2).max(12),
+      week: z.number().int().min(1).max(12),
+      startedAt: dateString,
+      weekStartedAt: dateString,
+      sessionsThisWeek: z.number().int().min(0).max(100),
+    })
+    .nullish(),
+});
+
 const rowSchemas = {
   exercises: z.object({
     id,
@@ -38,6 +67,7 @@ const rowSchemas = {
     description: text,
     isPublic: z.unknown().optional(),
     exerciseIds: z.array(id).max(500).nullish(),
+    plan: planSchema.nullish(),
     updatedAt: timestamp,
     deletedAt: timestamp,
   }),
@@ -231,13 +261,14 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
       // Б. Программы
       const upsertProgram = sqlite.prepare(`
-        INSERT INTO programs (id, user_id, name, description, is_public, exercise_ids, updated_at, synced_at, deleted_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO programs (id, user_id, name, description, is_public, exercise_ids, plan, updated_at, synced_at, deleted_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
           description = excluded.description,
           is_public = excluded.is_public,
           exercise_ids = excluded.exercise_ids,
+          plan = COALESCE(excluded.plan, programs.plan), -- клиенты без поддержки плана не затирают его
           updated_at = excluded.updated_at,
           synced_at = excluded.synced_at,
           deleted_at = excluded.deleted_at
@@ -251,6 +282,7 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
           p.description || null,
           p.isPublic ? 1 : 0,
           p.exerciseIds ? JSON.stringify(p.exerciseIds) : null,
+          p.plan ? JSON.stringify(p.plan) : null,
           p.updatedAt || serverTimestamp,
           serverTimestamp,
           p.deletedAt || null,
@@ -521,6 +553,7 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         programs: pullPrograms.map(p => ({
           ...p,
           exerciseIds: p.exerciseIds ? (JSON.parse(p.exerciseIds) as string[]) : [],
+          plan: p.plan ? JSON.parse(p.plan) : null,
         })),
         programDays: pullProgramDays,
         programExercises: pullProgramExercises,

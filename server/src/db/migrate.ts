@@ -5,6 +5,11 @@ import { db, sqlite } from './index.js';
 import { seedDatabase, SEED_EXERCISES } from './seed.js';
 
 const MIGRATIONS_TABLE = '__drizzle_migrations';
+/**
+ * Сколько первых миграций уже отражено в схеме баз, созданных через drizzle-kit push до появления журнала:
+ * ensureLegacyColumns() догоняет такую базу до состояния после этих миграций. Новые миграции (0002+) применятся штатно.
+ */
+const LEGACY_MIGRATIONS_COVERED = 2;
 
 // Миграция уже существующих баз: добавляем недостающие колонки (идемпотентно)
 function ensureColumn(table: string, column: string, ddl: string, backfill?: string) {
@@ -22,6 +27,7 @@ function ensureLegacyColumns() {
     ensureColumn(table, 'synced_at', 'INTEGER NOT NULL DEFAULT 0', 'updated_at');
   }
   ensureColumn('programs', 'exercise_ids', 'TEXT');
+  ensureColumn('programs', 'plan', 'TEXT');
 }
 
 // Вторичные индексы для поиска и Delta Sync (IF NOT EXISTS — безопасно вызывать при каждом старте)
@@ -56,7 +62,7 @@ function ensureIndexes() {
 
 /**
  * Базы, созданные до появления миграций (через drizzle-kit push), уже содержат схему первой миграции.
- * Помечаем её применённой, иначе migrate() попытается заново выполнить CREATE TABLE.
+ * Помечаем эти миграции применёнными, иначе migrate() попытается заново выполнить CREATE TABLE / ADD COLUMN.
  */
 function baselineLegacyDatabase(migrationsFolder: string) {
   const hasSchema = sqlite.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'").get();
@@ -65,9 +71,9 @@ function baselineLegacyDatabase(migrationsFolder: string) {
 
   ensureLegacyColumns(); // догоняем колонки, добавленные после push, до уровня первой миграции
   sqlite.exec(`CREATE TABLE "${MIGRATIONS_TABLE}" (id INTEGER PRIMARY KEY AUTOINCREMENT, hash text NOT NULL, created_at numeric)`);
-  const [first] = readMigrationFiles({ migrationsFolder });
-  if (first) {
-    sqlite.prepare(`INSERT INTO "${MIGRATIONS_TABLE}" (hash, created_at) VALUES (?, ?)`).run(first.hash, first.folderMillis);
+  const insert = sqlite.prepare(`INSERT INTO "${MIGRATIONS_TABLE}" (hash, created_at) VALUES (?, ?)`);
+  for (const migration of readMigrationFiles({ migrationsFolder }).slice(0, LEGACY_MIGRATIONS_COVERED)) {
+    insert.run(migration.hash, migration.folderMillis);
   }
 }
 

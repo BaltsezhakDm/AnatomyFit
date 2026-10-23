@@ -14,6 +14,7 @@ import {
   buildSessions,
   mapProgramToServer,
   resolveProgramExerciseIds,
+  resolvePlan,
   localSessionIdFromUuid,
 } from './core/sync-mapping.js';
 
@@ -170,13 +171,22 @@ export async function applyPull(pull) {
           continue;
         }
         const { ids, unknown } = resolveProgramExerciseIds(p.exerciseIds, uuidToId);
-        deferred += unknown;
+        // План (слоты, неделя цикла) приходит вместе с программой; без него локальные настройки не трогаем
+        const plan = resolvePlan(p.plan, uuidToId);
+        deferred += unknown + (plan ? plan.unknown : 0);
+        const planFields = plan
+          ? {
+              slots: plan.slots,
+              ...(plan.cycle ? { cycle: plan.cycle } : {}),
+              ...(plan.sessionsPerWeek ? { sessionsPerWeek: plan.sessionsPerWeek } : {}),
+            }
+          : {};
         if (local) {
           if (shouldApplyRemote(local, p.updatedAt)) {
-            await db.programs.update(local.id, { name: p.name, exerciseIds: ids, updatedAt: p.updatedAt });
+            await db.programs.update(local.id, { name: p.name, exerciseIds: ids, ...planFields, updatedAt: p.updatedAt });
           }
         } else {
-          await db.programs.add({ uuid: p.id, name: p.name, exerciseIds: ids, updatedAt: p.updatedAt });
+          await db.programs.add({ uuid: p.id, name: p.name, exerciseIds: ids, ...planFields, updatedAt: p.updatedAt });
         }
       }
 
@@ -216,6 +226,7 @@ export async function applyPull(pull) {
           weight: s.weight,
           reps: s.reps,
           comment: s.comment,
+          ...(s.rir !== undefined && s.rir !== null ? { rir: s.rir } : {}),
           updatedAt: s.updatedAt,
         };
         if (local) {

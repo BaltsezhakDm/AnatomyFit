@@ -272,3 +272,17 @@ test('sessionsOf группирует по датам и находит лучш
     assert.deepEqual(sessions.map(s => s.date), ['2026-02-20', '2026-03-01']);
     assert.equal(sessions[1].best.weight, 90); // 90x10 = 120 > 100x5 = 116.7
 });
+
+test('sessionsOf выбирает лучший подход с учётом RIR: 95 кг с запасом 3 сильнее 100 кг в отказ', () => {
+    const logs = [{ ...log('2026-03-01', 100, 8), rir: 0 }, { ...log('2026-03-01', 95, 8), rir: 3 }];
+    const [session] = sessionsOf(logs, bench, 80, TODAY);
+    assert.equal(session.best.weight, 95);
+    assert.equal(session.best.rir, 3);
+});
+
+test('без RIR используется предположение о запасе, rir 0 сохраняется как 0 (а не заменяется предположением)', () => {
+    const [assumed] = sessionsOf([log('2026-03-01', 100, 8)], bench, 80, TODAY);
+    const [failure] = sessionsOf([{ ...log('2026-03-01', 100, 8), rir: 0 }], bench, 80, TODAY);
+    assert.equal(failure.best.rir, 0);
+    assert.ok(failure.best.oneRM < assumed.best.oneRM);
+});

@@ -13,6 +13,8 @@ import {
     mapProgramToServer,
     resolveProgramExerciseIds,
     chunk,
+    buildPlanPayload,
+    resolvePlan,
 } from '../js/core/sync-mapping.js';
 import { formatLocalDate, parseLocalDate } from '../js/core/dates.js';
 
@@ -112,4 +114,41 @@ test('даты: formatLocalDate/parseLocalDate круглые и не сдвиг
     assert.equal(d.getDate(), 1);
     assert.equal(formatLocalDate(new Date(2026, 0, 31, 23, 59)), '2026-01-31');
     assert.equal(parseLocalDate(undefined).getFullYear() >= 1900, true);
+});
+
+test('mapLogToServer передаёт RIR (или null, если не указан)', () => {
+    const map = new Map([[1, 'ex-1']]);
+    assert.equal(mapLogToServer({ uuid: 'l', exerciseId: 1, sessionId: 1792787442600, weight: 1, reps: 1, rir: 2 }, map).rir, 2);
+    assert.equal(mapLogToServer({ uuid: 'l', exerciseId: 1, sessionId: 1792787442600, weight: 1, reps: 1, rir: 0 }, map).rir, 0);
+    assert.equal(mapLogToServer({ uuid: 'l', exerciseId: 1, sessionId: 1792787442600, weight: 1, reps: 1 }, map).rir, null);
+});
+
+test('план программы: слоты уходят по UUID упражнений и возвращаются локальными id, неизвестные считаются', () => {
+    const idToUuid = new Map([[1, 'u1'], [2, 'u2']]);
+    const program = {
+        slots: [
+            { exerciseId: 1, role: 'main', sets: 4, repsMin: 5, repsMax: 8 },
+            { exerciseId: 2, role: 'accessory', sets: 3, repsMin: null, repsMax: null, step: 1 },
+            { exerciseId: 99, role: 'accessory', sets: 3, repsMin: null, repsMax: null },
+        ],
+        cycle: { index: 1, weeks: 5, week: 3, startedAt: '2026-10-01', weekStartedAt: '2026-10-15', sessionsThisWeek: 1 },
+        sessionsPerWeek: 2,
+    };
+    const payload = buildPlanPayload(program, idToUuid);
+    assert.equal(payload.slots.length, 2, 'слот неизвестного упражнения не уходит');
+    assert.deepEqual(payload.slots[0], { exerciseId: 'u1', role: 'main', sets: 4, repsMin: 5, repsMax: 8 });
+    assert.equal('repsMin' in payload.slots[1], false, 'авто-диапазон не отправляется');
+    assert.equal(payload.sessionsPerWeek, 2);
+
+    const back = resolvePlan({ ...payload, slots: [...payload.slots, { exerciseId: 'u-new', role: 'main', sets: 3 }] }, new Map([['u1', 1], ['u2', 2]]));
+    assert.deepEqual(back.slots.map(s => [s.exerciseId, s.role, s.sets, s.repsMin, s.repsMax]), [[1, 'main', 4, 5, 8], [2, 'accessory', 3, null, null]]);
+    assert.equal(back.slots[1].step, 1);
+    assert.equal(back.unknown, 1);
+    assert.equal(back.cycle.week, 3);
+    assert.equal(back.sessionsPerWeek, 2);
+});
+
+test('план: без слотов, цикла и настроек — null; resolvePlan(null) — null', () => {
+    assert.equal(buildPlanPayload({ exerciseIds: [1] }, new Map([[1, 'u1']])), null);
+    assert.equal(resolvePlan(null, new Map()), null);
 });
