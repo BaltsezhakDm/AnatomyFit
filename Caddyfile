@@ -1,0 +1,23 @@
+# Замените :80 на ваш домен (например, fit.yourdomain.ru) для автоматического получения SSL Let's Encrypt
+:80 {
+    # Сжатие ответов (gzip, zstd)
+    encode gzip zstd
+
+    # Проксирование API запросов на бекенд
+    handle /api/* {
+        reverse_proxy api:3001
+    }
+
+    # Раздача загруженных медиафайлов (фото / видео)
+    handle /uploads/* {
+        root * /uploads
+        file_server
+    }
+
+    # Раздача статики PWA (HTML, JS, CSS)
+    handle {
+        root * /srv
+        file_server
+        try_files {path} /index.html
+    }
+}

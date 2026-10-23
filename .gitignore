@@ -1,2 +1,11 @@
 node_modules/
 dist/
+.env
+.env.*
+server/node_modules/
+server/dist/
+server/data/
+server/uploads/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal

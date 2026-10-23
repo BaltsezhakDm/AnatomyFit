@@ -1,0 +1,46 @@
+services:
+  # Бекенд сервис AnatomyFit (Fastify + SQLite)
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: anatomyfit_api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - HOST=0.0.0.0
+      - DB_PATH=/app/data/anatomyfit.sqlite
+      - UPLOAD_DIR=/app/uploads
+      # Обязателен: контейнер не запустится без секрета (минимум 32 символа, задаётся в .env рядом с docker-compose.yml)
+      - JWT_SECRET=${JWT_SECRET:?Задайте JWT_SECRET (минимум 32 символа) в .env}
+      - TRUST_PROXY=true
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost,https://your-domain.com}
+    volumes:
+      # Постоянное хранилище базы SQLite и медиафайлов на хосте VPS
+      - ./server/data:/app/data
+      - ./server/uploads:/app/uploads
+    # Порт API не публикуется на хост: доступ только через Caddy (/api/*) по внутренней сети compose
+    expose:
+      - "3001"
+
+  # Caddy веб-сервер (Раздача статики PWA + автоматический бесплатный SSL Let's Encrypt + Reverse Proxy)
+  caddy:
+    image: caddy:alpine
+    container_name: anatomyfit_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./dist:/srv:ro
+      - ./server/uploads:/uploads:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+volumes:
+  caddy_data:
+  caddy_config:
