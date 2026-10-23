@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     defaultCycle, weekProfile, advanceCycle, shouldSuggestAdvance,
-    normalizeSlots, repRangeFor, roundToStep, sessionsOf, fatigueSignal,
-    planExercise, planSession,
+    normalizeSlots, repRangeFor, inferRepRange, roundToStep, sessionsOf, fatigueSignal,
+    planExercise, planSession, jumpToDeload, nextOpenSetIndex,
 } from '../js/core/planner.js';
 
 const TODAY = '2026-03-10';
@@ -45,6 +45,26 @@ test('advanceCycle: неделя растёт, после разгрузки н�
     assert.deepEqual([cycle.week, cycle.index, cycle.startedAt], [1, 1, '2026-04-05']);
 });
 
+test('sessionsThisWeek: стартует с нуля и сбрасывается при смене недели/цикла, jumpToDeload ведёт на разгрузку', () => {
+    let cycle = defaultCycle('2026-03-01');
+    assert.equal(cycle.sessionsThisWeek, 0);
+    cycle = advanceCycle({ ...cycle, sessionsThisWeek: 3 }, '2026-03-08');
+    assert.equal(cycle.sessionsThisWeek, 0);
+    const deload = jumpToDeload({ ...cycle, sessionsThisWeek: 2 }, '2026-03-09');
+    assert.deepEqual([deload.week, deload.sessionsThisWeek, deload.weekStartedAt], [5, 0, '2026-03-09']);
+    assert.equal(weekProfile(deload.week, deload.weeks).isDeload, true);
+    const rolled = advanceCycle({ ...cycle, week: 5, sessionsThisWeek: 1 }, '2026-04-01');
+    assert.deepEqual([rolled.week, rolled.index, rolled.sessionsThisWeek], [1, 1, 0]);
+});
+
+test('nextOpenSetIndex: следующий невыполненный подход или null, когда план закрыт', () => {
+    const sets = [{}, {}, {}];
+    assert.equal(nextOpenSetIndex(sets, 0), 0);
+    assert.equal(nextOpenSetIndex(sets, 2), 2);
+    assert.equal(nextOpenSetIndex(sets, 3), null);
+    assert.equal(nextOpenSetIndex(sets, 7), null);
+});
+
 test('shouldSuggestAdvance: все тренировки недели сделаны или прошло 7 дней', () => {
     const cycle = defaultCycle('2026-03-01');
     assert.equal(shouldSuggestAdvance(cycle, 2, 3, '2026-03-04'), false);
@@ -81,6 +101,37 @@ test('roundToStep округляет к шагу без хвостов float', (
 
 // ---------- цель по упражнению ----------
 
+test('диапазон повторений выводится из истории: медиана последних тренировок ±2', () => {
+    const sessions = [{ sets: [{ reps: 6 }, { reps: 8 }] }, { sets: [{ reps: 10 }, { reps: 10 }, { reps: 12 }] }];
+    assert.deepEqual(inferRepRange(sessions), { min: 8, max: 12 });
+    assert.equal(inferRepRange([]), null);
+});
+
+test('слот без явного диапазона берёт его из истории, явный диапазон приоритетнее, без истории — по роли', () => {
+    const auto = { exerciseId: 2, role: 'accessory', sets: 3, repsMin: null, repsMax: null };
+    const logs = [log('2026-03-03', 20, 8, 2), log('2026-03-03', 20, 8, 2), log('2026-03-03', 20, 9, 2)];
+    assert.deepEqual(plan({ slot: auto, exercise: curl, logs }).range, { min: 6, max: 10 });
+    assert.deepEqual(plan({ slot: { ...auto, repsMin: 12, repsMax: 15 }, exercise: curl, logs }).range, { min: 12, max: 15 });
+    assert.deepEqual(plan({ slot: auto, exercise: curl, logs: [] }).range, { min: 10, max: 15 });
+});
+
+test('первая неделя цикла не роняет вес: прошлый подход считается законченным с запасом ~2 повтора', () => {
+    const auto = { exerciseId: 1, role: 'accessory', sets: 3, repsMin: null, repsMax: null };
+    // Реальные данные: 113 кг x 8 -> при тех же повторах неделя 1 (запас 3) почти не ниже, неделя 2 (запас 2) — тот же вес
+    const logs = [log('2026-03-03', 113, 8), log('2026-03-03', 113, 8), log('2026-03-03', 113, 8)];
+    const w1 = plan({ slot: auto, logs, profile: weekProfile(1) }).sets[0].weight;
+    const w2 = plan({ slot: auto, logs, profile: weekProfile(2) }).sets[0].weight;
+    assert.ok(w1 >= 110 && w1 <= 113, `неделя 1: ${w1}`);
+    assert.equal(w2, 112.5);
+});
+
+test('явный rir в подходе заменяет предположение: подход «в отказ» (rir 0) даёт меньший расчётный 1ПМ', () => {
+    const auto = { exerciseId: 1, role: 'accessory', sets: 3, repsMin: null, repsMax: null };
+    const atFailure = plan({ slot: auto, logs: [{ ...log('2026-03-03', 100, 8), rir: 0 }], profile: weekProfile(2) }).sets[0].weight;
+    const assumed = plan({ slot: auto, logs: [log('2026-03-03', 100, 8)], profile: weekProfile(2) }).sets[0].weight;
+    assert.ok(atFailure < assumed);
+});
+
 test('нет истории: нужна базовая оценка, вес не придумывается', () => {
     const p = plan({});
     assert.equal(p.status, 'needs_baseline');
@@ -91,9 +142,11 @@ test('нет истории: нужна базовая оценка, вес не
 
 test('цель считается от 1ПМ прошлой тренировки: неделя 1 (RIR 3) — вес немного ниже «до отказа», дальше растёт', () => {
     const logs = [log('2026-03-03', 100, 10)]; // 1ПМ = 133.3
-    const weights = [1, 2, 3, 4].map(w => plan({ logs, profile: weekProfile(w) }).sets[0].weight);
+    // Диапазон 8-12 -> цель 10 повторов; прошлый подход считается законченным с запасом 2 повтора
+    const slot = { ...mainSlot, repsMin: 8, repsMax: 12 };
+    const weights = [1, 2, 3, 4].map(w => plan({ slot, logs, profile: weekProfile(w) }).sets[0].weight);
     assert.deepEqual(weights, [97.5, 100, 100, 102.5]);
-    assert.equal(plan({ logs }).targetReps, 8);
+    assert.equal(plan({ slot, logs }).targetReps, 10);
 });
 
 test('объём по неделям: 3 подхода -> 3, 3, 4, 4 -> разгрузка 2', () => {
@@ -141,11 +194,23 @@ test('шаг веса зависит от оборудования, слот м�
     assert.equal(q.sets[0].weight % 1, 0);
 });
 
-test('упражнение со своим весом: добавочный вес не уходит в минус, растут повторы', () => {
+test('подтягивания с поддержкой (отрицательный вес): помощь уменьшается по мере роста, границы считаются по эффективному весу', () => {
+    const slot = { exerciseId: 3, role: 'accessory', sets: 3, repsMin: null, repsMax: null };
+    // Реальный случай из истории: -18 кг помощи при весе тела 86 кг, 12 повторов -> 1ПМ ~95
+    const logs = [log('2026-03-03', -18, 12, 3)];
+    const week1 = plan({ slot, exercise: pullup, bodyWeight: 86, logs, profile: weekProfile(1) });
+    const week4 = plan({ slot, exercise: pullup, bodyWeight: 86, logs, profile: weekProfile(4) });
+    assert.ok(week4.sets[0].weight > week1.sets[0].weight, 'к концу цикла помощи меньше');
+    assert.ok(week4.sets[0].weight <= -18 + 4, 'рост нагрузки за тренировку ограничен (~5% эффективного веса)');
+    for (const w of [week1, week4]) assert.equal(Math.abs(w.sets[0].weight % 1), 0);
+    const deload = plan({ slot, exercise: pullup, bodyWeight: 86, logs, profile: weekProfile(5) });
+    assert.ok(deload.sets[0].weight < -18, 'на разгрузке помощи больше');
+});
+
+test('упражнение со своим весом без добавочного: границы работают относительно веса тела', () => {
     const slot = { exerciseId: 3, role: 'accessory', sets: 3, repsMin: 6, repsMax: 10 };
-    const p = plan({ slot, exercise: pullup, bodyWeight: 80, logs: [log('2026-03-03', 0, 8, 3)], profile: weekProfile(2) });
-    assert.ok(p.sets[0].weight >= 0);
-    assert.ok(p.sets[0].reps >= p.targetReps);
+    const p = plan({ slot, exercise: pullup, bodyWeight: 80, logs: [log('2026-03-03', 0, 8, 3)], profile: weekProfile(4) });
+    assert.ok(p.sets[0].weight >= -8 && p.sets[0].weight <= 4, `добавочный вес ${p.sets[0].weight} в разумных пределах`);
 });
 
 test('недавний максимум показывается рядом, но в цель не подставляется', () => {

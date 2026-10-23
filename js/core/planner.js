@@ -25,6 +25,14 @@ const DELOAD_WEIGHT_RATIO = 0.9;
 const DELOAD_VOLUME = 0.5;
 const DELOAD_RIR = 4;
 const FATIGUE_DROP = 0.02;
+/**
+ * В логе нет RIR, поэтому считаем, что прошлый раз подход закончен с запасом ~2 повторения (обычная работа в зале,
+ * а не отказ). Если у подхода есть поле rir — используется оно. Без этого каждая первая неделя цикла давала бы
+ * необоснованное снижение веса на ~7%.
+ */
+const ASSUMED_LAST_RIR = 2;
+const ROLE_DEFAULT_RANGE = { main: { min: 6, max: 10 }, accessory: { min: 10, max: 15 } };
+const INFERRED_RANGE_SESSIONS = 3;
 
 const MAIN_PATTERNS = new Set(['squat', 'deadlift', 'bench_press', 'overhead_press', 'row', 'pull_down']);
 const STEP_BY_EQUIPMENT = { barbell: 2.5, dumbbell: 2, cable: 2.5, lever: 2.5, smith: 2.5, bodyweight: 1 };
@@ -32,7 +40,7 @@ const STEP_BY_EQUIPMENT = { barbell: 2.5, dumbbell: 2, cable: 2.5, lever: 2.5, s
 // ---------- Мезоцикл ----------
 
 export function defaultCycle(startDate, { weeks = DEFAULT_MESOCYCLE_WEEKS, index = 0 } = {}) {
-    return { index, weeks, week: 1, startedAt: startDate, weekStartedAt: startDate };
+    return { index, weeks, week: 1, startedAt: startDate, weekStartedAt: startDate, sessionsThisWeek: 0 };
 }
 
 /** Профиль недели: целевой RIR, множитель объёма, признак разгрузки. Последняя неделя цикла — разгрузка. */
@@ -55,9 +63,9 @@ export function weekProfile(week, weeks = DEFAULT_MESOCYCLE_WEEKS) {
 /** Следующая неделя; после разгрузки начинается новый мезоцикл (индекс растёт — диапазон повторений смещается). */
 export function advanceCycle(cycle, today) {
     if (cycle.week < cycle.weeks) {
-        return { ...cycle, week: cycle.week + 1, weekStartedAt: today };
+        return { ...cycle, week: cycle.week + 1, weekStartedAt: today, sessionsThisWeek: 0 };
     }
-    return { ...cycle, index: cycle.index + 1, week: 1, startedAt: today, weekStartedAt: today };
+    return { ...cycle, index: cycle.index + 1, week: 1, startedAt: today, weekStartedAt: today, sessionsThisWeek: 0 };
 }
 
 /** Пора ли предложить перейти на следующую неделю: сделаны все тренировки недели или прошло 7+ дней. */
@@ -66,13 +74,26 @@ export function shouldSuggestAdvance(cycle, sessionsDoneThisWeek, sessionsPerWee
     return sessionsDoneThisWeek >= sessionsPerWeek || days >= 7;
 }
 
+/** Досрочная разгрузка: перейти сразу на последнюю неделю цикла (например, по сигналу усталости). */
+export function jumpToDeload(cycle, today) {
+    return { ...cycle, week: cycle.weeks, weekStartedAt: today, sessionsThisWeek: 0 };
+}
+
+/** Сколько тренировок в неделе подразумевает программа: по умолчанию одна тренировка программы в неделю. */
+export const DEFAULT_SESSIONS_PER_WEEK = 1;
+
+/** Номер первого ещё не выполненного подхода упражнения: подходы сегодня считаются подряд (null — план выполнен). */
+export function nextOpenSetIndex(plannedSets, doneCount) {
+    return doneCount < plannedSets.length ? doneCount : null;
+}
+
 // ---------- Слоты программы ----------
 
-function defaultSlot(exercise, position) {
+/** Слот по умолчанию для упражнения на данной позиции программы (первые два базовых движения — основные). */
+export function defaultSlot(exercise, position) {
     const isMain = MAIN_PATTERNS.has(exercise.movementPattern) && position < 2;
-    return isMain
-        ? { exerciseId: exercise.id, role: 'main', sets: 3, repsMin: 6, repsMax: 10 }
-        : { exerciseId: exercise.id, role: 'accessory', sets: 3, repsMin: 10, repsMax: 15 };
+    // Диапазон повторений не задан (null) — он выводится из истории упражнения, а без истории берётся по роли
+    return { exerciseId: exercise.id, role: isMain ? 'main' : 'accessory', sets: 3, repsMin: null, repsMax: null };
 }
 
 /** Слоты программы; для старых программ (только exerciseIds) создаются по умолчанию, существующие настройки сохраняются. */
@@ -95,12 +116,25 @@ export function stepFor(exercise, slot) {
     return slot.step || STEP_BY_EQUIPMENT[exercise.equipment] || 2.5;
 }
 
-/** Диапазон повторений слота в данном мезоцикле: основные движения смещаются по «волне», подсобные — нет. */
-export function repRangeFor(slot, cycleIndex) {
-    if (slot.role !== 'main') return { min: slot.repsMin, max: slot.repsMax };
+/** Диапазон повторений, который реально использует пользователь: медиана повторов последних тренировок ±2. */
+export function inferRepRange(sessions) {
+    const reps = sessions.slice(-INFERRED_RANGE_SESSIONS).flatMap(s => s.sets.map(set => set.reps)).sort((a, b) => a - b);
+    if (reps.length === 0) return null;
+    const median = reps[Math.floor(reps.length / 2)];
+    return { min: Math.max(MIN_MAIN_REPS, median - 2), max: median + 2 };
+}
+
+/**
+ * Диапазон повторений слота в данном мезоцикле. Явно заданный в программе имеет приоритет, затем — выведенный из
+ * истории (inferred), затем — по роли. Основные движения смещаются по «волне», подсобные — нет.
+ */
+export function repRangeFor(slot, cycleIndex, inferred = null) {
+    const explicit = slot.repsMin != null && slot.repsMax != null ? { min: slot.repsMin, max: slot.repsMax } : null;
+    const base = explicit || inferred || ROLE_DEFAULT_RANGE[slot.role] || ROLE_DEFAULT_RANGE.accessory;
+    if (slot.role !== 'main') return { min: base.min, max: base.max };
     const shift = REP_WAVE_SHIFT[cycleIndex % REP_WAVE_SHIFT.length];
-    const min = Math.max(MIN_MAIN_REPS, slot.repsMin + shift);
-    const max = Math.max(min + 1, slot.repsMax + shift);
+    const min = Math.max(MIN_MAIN_REPS, base.min + shift);
+    const max = Math.max(min + 1, base.max + shift);
     return { min, max };
 }
 
@@ -120,7 +154,7 @@ export function sessionsOf(logs, exercise, bodyWeight, today) {
             let best = null;
             for (const set of sets) {
                 const oneRM = calculate1RM(getEffectiveWeight(set.weight, exercise.usesBodyweight, bodyWeight), set.reps);
-                if (!best || oneRM > best.oneRM) best = { weight: set.weight, reps: set.reps, oneRM };
+                if (!best || oneRM > best.oneRM) best = { weight: set.weight, reps: set.reps, oneRM, rir: set.rir };
             }
             return { date, sets, best };
         });
@@ -142,23 +176,18 @@ export function fatigueSignal(sessionsByExercise) {
 
 // ---------- План упражнения и тренировки ----------
 
-function repsAt(oneRM, effectiveWeight, rir) {
-    return Math.max(1, Math.round(30 * (oneRM / effectiveWeight - 1)) - rir);
-}
-
 /**
  * Цель на тренировку для одного слота.
  * @returns {{ status: 'needs_baseline'|'planned', sets: Array<{weight:number|null, reps:number, rir:number}>, ... }}
  */
 export function planExercise({ slot, exercise, logs, bodyWeight, profile, cycleIndex, today }) {
-    const range = repRangeFor(slot, cycleIndex);
+    const sessions = sessionsOf(logs, exercise, bodyWeight, today);
+    const last = sessions[sessions.length - 1] || null;
+    const range = repRangeFor(slot, cycleIndex, inferRepRange(sessions));
     const targetReps = range.min + Math.round((range.max - range.min) / 2);
     const rir = profile.rir;
     const setCount = Math.max(1, Math.round(slot.sets * profile.volume));
     const step = stepFor(exercise, slot);
-
-    const sessions = sessionsOf(logs, exercise, bodyWeight, today);
-    const last = sessions[sessions.length - 1] || null;
     // «Недавний максимум» не подставляется в цель автоматически — только показывается рядом с «прошлым разом»
     const advice = getProgressionAdvice(logs, exercise, bodyWeight);
     const recentBest = advice.type === 'advice' ? advice.recentBest : null;
@@ -175,36 +204,33 @@ export function planExercise({ slot, exercise, logs, bodyWeight, profile, cycleI
     }
 
     const lastWeight = last.best.weight;
+    // Все границы считаются по эффективному весу (вес тела + добавочный): добавочный вес бывает отрицательным —
+    // это подтягивания с поддержкой, и рост нагрузки там означает уменьшение помощи
     const bw = exercise.usesBodyweight ? bodyWeight : 0;
-    const oneRM = last.best.oneRM;
-    let reps = targetReps;
+    const lastEffective = lastWeight + bw;
+    // 1ПМ «с учётом запаса»: подход, законченный с запасом в k повторений, соответствует k+reps повторам до отказа
+    const lastRir = last.best.rir ?? ASSUMED_LAST_RIR;
+    const oneRM = (lastWeight + bw) * (1 + (last.best.reps + lastRir) / 30);
     let note = null;
 
     let weight;
     if (profile.isDeload) {
-        weight = roundToStep(lastWeight * DELOAD_WEIGHT_RATIO, step);
+        weight = roundToStep((lastEffective * DELOAD_WEIGHT_RATIO) - bw, step);
         note = 'Разгрузка: вес ниже, объём вдвое меньше';
     } else {
         const effective = oneRM / (1 + (targetReps + rir) / 30);
         weight = roundToStep(effective - bw, step);
 
-        const ceiling = Math.max(roundToStep(lastWeight * MAX_WEIGHT_GAIN, step), lastWeight + step);
-        const floor = roundToStep(lastWeight * MIN_WEIGHT_RATIO, step);
+        const ceiling = Math.max(roundToStep(lastEffective * MAX_WEIGHT_GAIN - bw, step), lastWeight + step);
+        const floor = roundToStep(lastEffective * MIN_WEIGHT_RATIO - bw, step);
         if (weight > ceiling) { weight = ceiling; note = 'Рост ограничен 5% за тренировку'; }
         if (weight < floor) { weight = floor; }
 
-        // Прошлый раз не дотянули до нижней границы диапазона — вес не повышаем
+        // Прошлый раз не дотянули до нижней границы диапазона — нагрузку не повышаем
         if (last.best.reps < range.min && weight > lastWeight) {
             weight = lastWeight;
             note = 'Прошлый раз не добрали повторы — вес без изменений';
         }
-    }
-
-    // Упражнения со своим весом: добавочный вес не может быть отрицательным — недостающую нагрузку берём повторами
-    if (exercise.usesBodyweight && weight < 0) {
-        weight = 0;
-        reps = Math.max(targetReps, repsAt(oneRM, bw, rir));
-        note = 'Свой вес: растим повторы';
     }
 
     return {
@@ -212,7 +238,7 @@ export function planExercise({ slot, exercise, logs, bodyWeight, profile, cycleI
         status: 'planned',
         note,
         lastTime: { date: last.date, weight: lastWeight, reps: last.best.reps, sets: last.sets.length },
-        sets: Array.from({ length: setCount }, () => ({ weight, reps, rir })),
+        sets: Array.from({ length: setCount }, () => ({ weight, reps: targetReps, rir })),
     };
 }
 

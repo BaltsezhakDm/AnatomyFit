@@ -184,23 +184,23 @@ function updateSyncBadge(status, lastTime) {
   if (status === 'syncing') {
     badge.textContent = 'Синхронизация...';
     badge.className = 'px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse';
-    if (icon) icon.className = 'w-4 h-4 text-amber-400 animate-spin';
+    if (icon) icon.setAttribute('class', 'w-4 h-4 text-amber-400 animate-spin'); // icon — SVG (после lucide), у SVG className только для чтения
   } else if (status === 'synced') {
     badge.textContent = 'Синхронизировано';
     badge.className = 'px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
-    if (icon) icon.className = 'w-4 h-4 text-brand';
+    if (icon) icon.setAttribute('class', 'w-4 h-4 text-brand'); // icon — SVG (после lucide), у SVG className только для чтения
   } else if (status === 'offline') {
     badge.textContent = 'Офлайн (локально)';
     badge.className = 'px-2 py-0.5 rounded-full text-[11px] font-semibold bg-zinc-800 text-zinc-400 border border-zinc-700';
-    if (icon) icon.className = 'w-4 h-4 text-zinc-500';
+    if (icon) icon.setAttribute('class', 'w-4 h-4 text-zinc-500'); // icon — SVG (после lucide), у SVG className только для чтения
   } else if (status === 'error') {
     badge.textContent = 'Ошибка связи';
     badge.className = 'px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-500/10 text-red-400 border border-red-500/20';
-    if (icon) icon.className = 'w-4 h-4 text-red-400';
+    if (icon) icon.setAttribute('class', 'w-4 h-4 text-red-400'); // icon — SVG (после lucide), у SVG className только для чтения
   } else {
     badge.textContent = 'Локальный режим';
     badge.className = 'px-2 py-0.5 rounded-full text-[11px] font-semibold bg-zinc-800 text-zinc-400 border border-zinc-700';
-    if (icon) icon.className = 'w-4 h-4 text-zinc-400';
+    if (icon) icon.setAttribute('class', 'w-4 h-4 text-zinc-400'); // icon — SVG (после lucide), у SVG className только для чтения
   }
 
   if (lastTimeEl && lastTime > 0) {

@@ -5,6 +5,7 @@ import { getProgressionAdvice } from './core/progression.js';
 import { getBest1RM } from './core/records.js';
 import { showToast, showConfirm, switchTab } from './ui.js';
 import { syncModalLock } from './modal-lock.js';
+import { renderExercisePlan, resetPlanCache, recordProgramSessionDone, renderCycleCard } from './plan-ui.js';
 import { parseLocalDate } from './core/dates.js';
 
 export let activeSession = null;
@@ -107,6 +108,7 @@ export async function startWorkoutSession(isFree = false) {
         };
     }
 
+    resetPlanCache();
     localStorage.setItem('active_session_anatomyfit', JSON.stringify(activeSession));
     buildActiveSessionUI();
     showToast(`Тренировка "${activeSession.name}" запущена!`, 'success');
@@ -132,6 +134,7 @@ export async function buildActiveSessionUI() {
         if (idle) idle.classList.remove('hidden');
         if (active) active.classList.add('hidden');
         if (indicator) indicator.classList.add('hidden');
+        await renderCycleCard(); // неделя мезоцикла могла измениться (завершена тренировка)
         return;
     }
 
@@ -210,7 +213,10 @@ export async function buildActiveSessionUI() {
 
         select.innerHTML = optionsHtml;
 
-        if (currentValue && select.querySelector(`option[value="${currentValue}"]`)) {
+        // Если тренировка по программе, а в списке остался выбор от прошлого экрана (упражнения нет в программе) —
+        // переходим к первому упражнению программы, иначе план на сегодня не показывается
+        const belongsToSession = sessionExercises.length === 0 || sessionExercises.some(e => String(e.id) === currentValue);
+        if (currentValue && belongsToSession && select.querySelector(`option[value="${currentValue}"]`)) {
             select.value = currentValue;
         } else if (sessionExercises.length > 0) {
             select.value = sessionExercises[0].id;
@@ -257,6 +263,7 @@ export async function onActiveExerciseChange() {
     }
 
     renderProgressionAdvice(advice, ex);
+    await renderExercisePlan(activeSession, exId);
     await updateTreePickerButton(exId);
 }
 
@@ -338,7 +345,7 @@ function renderProgressionAdvice(advice, ex) {
     (Расчетный 1RM: <span class="text-brand font-mono">${Math.round(max1RM)} кг</span>).
     ${lastCommentHtml}
     ${recentBestHtml}
-    <div class="mt-2 text-[11px] border-t border-zinc-900 pt-1.5 space-y-1">
+    <div class="progression-options mt-2 text-[11px] border-t border-zinc-900 pt-1.5 space-y-1">
         <div class="text-emerald-400 font-semibold">Варианты прогрессии на сегодня:</div>
         <div class="flex items-center gap-1.5">
             <span class="w-1.5 h-1.5 rounded-full bg-brand"></span>
@@ -422,6 +429,7 @@ export async function saveActiveSet() {
     await loadTodayLogs();
     await updateStatistics();
     await updateProgressionAdvice(exerciseId);
+    await renderExercisePlan(activeSession, exerciseId);
 
     // Запускаем таймер отдыха на настроенную длительность
     startRestTimer(getRestDuration());
@@ -582,6 +590,12 @@ export async function finishWorkoutSession() {
     const conf = await showConfirm("Завершить текущую тренировку и сохранить всю историю?");
     if (!conf) return;
 
+    // Тренировка по программе засчитывается в неделю мезоцикла (только если в ней есть хотя бы один подход)
+    if (activeSession && activeSession.type === 'routine' && activeSession.id) {
+        const setsDone = await db.workoutLogs.where('sessionId').equals(activeSession.sessionId).count();
+        if (setsDone > 0) await recordProgramSessionDone(activeSession.id);
+    }
+
     localStorage.removeItem('active_session_anatomyfit');
     activeSession = null;
     stopTimer();
@@ -720,6 +734,7 @@ async function refreshAfterLogChange() {
     const select = document.getElementById('active-exercise-select');
     if (select && select.value) {
         updateProgressionAdvice(parseInt(select.value));
+        renderExercisePlan(activeSession, parseInt(select.value));
     }
 }
 

@@ -127,3 +127,8 @@ textarea:focus:not(:focus-visible) {
 .anatomy-lines {
   pointer-events: none;
 }
+
+/* План мезоцикла заменяет «варианты прогрессии» в анализаторе */
+#progression-advisor-card.has-plan .progression-options {
+  display: none;
+}

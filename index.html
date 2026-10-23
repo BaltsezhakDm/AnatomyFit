@@ -68,11 +68,13 @@
                             <label
                                 class="block text-left text-[10px] text-zinc-500 mb-1 uppercase font-bold tracking-wider">Выбрать
                                 программу:</label>
-                            <select id="start-routine-select"
+                            <select id="start-routine-select" onchange="renderCycleCard()"
                                 class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand">
                                 <!-- Заполняется динамически -->
                             </select>
                         </div>
+                        <!-- Мезоцикл выбранной программы: неделя, план на сегодня, подсказки -->
+                        <div id="cycle-card"></div>
                         <button onclick="startWorkoutSession()"
                             class="w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-200 flex items-center justify-center gap-2">
                             <i data-lucide="zap" class="w-4 h-4"></i>
@@ -209,6 +211,9 @@
                         </div>
                     </div>
 
+                    <!-- ПЛАН НА СЕГОДНЯ ПО ПРОГРАММЕ (мезоцикл) -->
+                    <div id="exercise-plan-card" class="hidden bg-zinc-950 p-3 rounded-xl border border-brand/20 space-y-2"></div>
+
                     <!-- УМНЫЙ СОВЕТНИК ПРОГРЕССИИ -->
                     <div id="progression-advisor-card"
                         class="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-2">
@@ -331,6 +336,13 @@
                         <label class="block text-xs text-zinc-400 mb-1">Название программы</label>
                         <input type="text" id="program-name-input" placeholder="Например: Сплит День А (Грудь/Спина)"
                             class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1">Тренировок по этой программе в неделю</label>
+                        <input type="number" id="program-sessions-per-week" min="1" max="7" value="1" inputmode="numeric"
+                            class="w-24 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 text-center font-mono focus:outline-none focus:border-brand">
+                        <p class="text-[10px] text-zinc-500 mt-1">Неделя мезоцикла считается выполненной, когда сделаны все тренировки.</p>
                     </div>
 
                     <!-- Выбор упражнений для включения в программу -->
