@@ -203,6 +203,7 @@ test('удаление (deletedAt) доходит до pull как мягкое 
 const validPlan = (exerciseId: string) => ({
   slots: [{ exerciseId, role: 'main', sets: 4, repsMin: 5, repsMax: 8 }, { exerciseId: `${exerciseId}-b`, role: 'accessory', sets: 3 }],
   sessionsPerWeek: 2,
+  cycleWeeks: 4,
   cycle: { index: 1, weeks: 5, week: 3, startedAt: '2026-10-01', weekStartedAt: '2026-10-15', sessionsThisWeek: 1 },
 });
 
@@ -216,6 +217,7 @@ test('план программы (слоты, цикл, тренировок в
   const program = pulled.json().pull.programs.find((p: { id: string }) => p.id === pid);
   assert.equal(program.plan.cycle.week, 3);
   assert.equal(program.plan.sessionsPerWeek, 2);
+  assert.equal(program.plan.cycleWeeks, 4);
   assert.equal(program.plan.slots[0].repsMin, 5);
 });
 
@@ -231,6 +233,8 @@ test('некорректный план отклоняет только эту �
   });
   assert.equal(res.statusCode, 200);
   assert.equal(rejectedFor(res, 'programs').length, 2, 'неверная роль и неделя вне диапазона');
+  const badWeeks = await t.sync(alice, { programs: [{ id: uuid(), name: 'W', plan: { slots: [], cycleWeeks: 40 }, updatedAt: 1 }] });
+  assert.equal(rejectedFor(badWeeks, 'programs').length, 1, 'длина цикла вне 2-12');
   assert.equal(t.sqlite.prepare('SELECT 1 FROM programs WHERE id = ?').get(bad), undefined);
 });
 

@@ -35,6 +35,7 @@ const planSchema = z.object({
     )
     .max(100),
   sessionsPerWeek: z.number().int().min(1).max(14).nullish(),
+  cycleWeeks: z.number().int().min(2).max(12).nullish(),
   cycle: z
     .object({
       index: z.number().int().min(0).max(10_000),

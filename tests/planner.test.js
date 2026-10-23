@@ -4,6 +4,8 @@ import {
     defaultCycle, weekProfile, advanceCycle, shouldSuggestAdvance,
     normalizeSlots, repRangeFor, inferRepRange, roundToStep, sessionsOf, fatigueSignal,
     planExercise, planSession, jumpToDeload, nextOpenSetIndex,
+    repeatWeek, restartCycle, postponeDeload, setCycleLength,
+    inferWeightStep, inferWeightGrid, snapToGrid, stepFor, defaultStepFor,
 } from '../js/core/planner.js';
 
 const TODAY = '2026-03-10';
@@ -122,7 +124,7 @@ test('первая неделя цикла не роняет вес: прошл�
     const w1 = plan({ slot: auto, logs, profile: weekProfile(1) }).sets[0].weight;
     const w2 = plan({ slot: auto, logs, profile: weekProfile(2) }).sets[0].weight;
     assert.ok(w1 >= 110 && w1 <= 113, `неделя 1: ${w1}`);
-    assert.equal(w2, 112.5);
+    assert.equal(w2, 113, 'неделя 2 (запас 2): вес прошлого раза, сетка считается от него');
 });
 
 test('явный rir в подходе заменяет предположение: подход «в отказ» (rir 0) даёт меньший расчётный 1ПМ', () => {
@@ -285,4 +287,142 @@ test('без RIR используется предположение о запа
     const [failure] = sessionsOf([{ ...log('2026-03-01', 100, 8), rir: 0 }], bench, 80, TODAY);
     assert.equal(failure.best.rir, 0);
     assert.ok(failure.best.oneRM < assumed.best.oneRM);
+});
+
+test('repeatWeek: неделя та же, счётчик тренировок и старт недели обновляются', () => {
+    const cycle = { ...defaultCycle('2026-03-01'), week: 3, sessionsThisWeek: 1 };
+    const repeated = repeatWeek(cycle, '2026-03-20');
+    assert.deepEqual([repeated.week, repeated.sessionsThisWeek, repeated.weekStartedAt, repeated.index], [3, 0, '2026-03-20', 0]);
+});
+
+test('restartCycle: неделя 1, номер цикла сохраняется', () => {
+    const restarted = restartCycle({ ...defaultCycle('2026-03-01'), index: 2, week: 4, sessionsThisWeek: 2 }, '2026-04-01');
+    assert.deepEqual([restarted.week, restarted.index, restarted.startedAt, restarted.sessionsThisWeek], [1, 2, '2026-04-01', 0]);
+});
+
+test('postponeDeload: из разгрузки возвращает на последнюю неделю накопления, в остальных неделях ничего не меняет', () => {
+    const inDeload = { ...defaultCycle('2026-03-01'), week: 5 };
+    const postponed = postponeDeload(inDeload, '2026-04-01');
+    assert.deepEqual([postponed.week, postponed.weekStartedAt], [4, '2026-04-01']);
+    assert.equal(weekProfile(postponed.week, postponed.weeks).isDeload, false);
+    const working = { ...defaultCycle('2026-03-01'), week: 2 };
+    assert.equal(postponeDeload(working, '2026-04-01'), working);
+});
+
+test('setCycleLength: границы 2-12, текущая неделя не выходит за новую длину', () => {
+    const cycle = { ...defaultCycle('2026-03-01'), week: 5, weeks: 5 };
+    assert.deepEqual([setCycleLength(cycle, 4).weeks, setCycleLength(cycle, 4).week], [4, 4]);
+    assert.equal(setCycleLength(cycle, 99).weeks, 12);
+    assert.equal(setCycleLength(cycle, 0).weeks, 2);
+    assert.equal(setCycleLength({ ...cycle, week: 2 }, 6).week, 2);
+    assert.equal(weekProfile(4, 4).isDeload, true, 'в 4-недельном цикле четвёртая неделя — разгрузка');
+});
+
+// ---------- шаг веса ----------
+
+const logsOf = (...weights) => weights.map((w, i) => ({ date: `2026-02-${String(i + 1).padStart(2, '0')}`, weight: w, reps: 10, exerciseId: 1 }));
+
+test('inferWeightStep: самый частый шаг между соседними весами (5, 1, 2.4 кг)', () => {
+    assert.equal(inferWeightStep(logsOf(40, 45, 50, 55, 55, 60)), 5);
+    assert.equal(inferWeightStep(logsOf(20, 21, 22, 23, 25)), 1);
+    assert.equal(inferWeightStep(logsOf(2.4, 4.8, 7.2, 9.6)), 2.4);
+});
+
+test('inferWeightStep: мало данных или нет повторяющегося шага — null; единичный «нечётный» вес не ломает вывод', () => {
+    assert.equal(inferWeightStep(logsOf(40, 45)), null, 'меньше трёх разных весов');
+    assert.equal(inferWeightStep(logsOf(40, 50, 65)), null, 'шаги 10 и 15 не повторяются');
+    assert.equal(inferWeightStep(logsOf(40, 45, 50, 51, 55, 60)), 5, 'выброс 51 не меняет самый частый шаг');
+    assert.equal(inferWeightStep([]), null);
+});
+
+test('snapToGrid: сетка отсчитывается от последнего веса пользователя, а не от нуля', () => {
+    assert.equal(snapToGrid(112, 5, 113), 113);
+    assert.equal(snapToGrid(116, 5, 113), 118);
+    assert.equal(snapToGrid(107, 5, 113), 108);
+    assert.equal(snapToGrid(9.9, 2.4, 7.2), 9.6);
+    assert.equal(snapToGrid(-16, 2.5, -18), -15.5);
+});
+
+test('stepFor: приоритет — слот, потом история, потом оборудование', () => {
+    const ex = { equipment: 'cable' };
+    assert.equal(stepFor(ex, { step: 1 }, 5), 1);
+    assert.equal(stepFor(ex, {}, 5), 5);
+    assert.equal(stepFor(ex, {}, null), defaultStepFor(ex));
+    assert.equal(defaultStepFor({ equipment: 'dumbbell' }), 2);
+    assert.equal(defaultStepFor({}), 2.5);
+});
+
+test('тренажёр с шагом 5 кг: цель кратна 5 от последнего веса, шаг определён по истории', () => {
+    const machine = { id: 1, equipment: 'lever', usesBodyweight: 0, movementPattern: 'other' };
+    const slot = { exerciseId: 1, role: 'accessory', sets: 3, repsMin: null, repsMax: null };
+    const logs = [...logsOf(60, 65, 70, 75, 80), { date: '2026-03-03', weight: 80, reps: 10, exerciseId: 1 }];
+    for (const week of [1, 2, 3, 4, 5]) {
+        const p = planExercise({ slot, exercise: machine, logs, bodyWeight: 80, profile: weekProfile(week), cycleIndex: 0, today: '2026-03-10' });
+        assert.equal(p.step, 5);
+        assert.equal(p.stepSource, 'history');
+        assert.equal(Math.abs((p.sets[0].weight - 80) % 5), 0, `неделя ${week}: ${p.sets[0].weight}`);
+    }
+});
+
+test('шаг 2.4 кг: цель попадает на сетку 2.4, а явный шаг слота важнее истории', () => {
+    const machine = { id: 1, equipment: 'lever', usesBodyweight: 0, movementPattern: 'other' };
+    const base = { exerciseId: 1, role: 'accessory', sets: 3, repsMin: null, repsMax: null };
+    const logs = [...logsOf(24, 26.4, 28.8, 31.2, 33.6), { date: '2026-03-03', weight: 33.6, reps: 10, exerciseId: 1 }];
+    const run = (slot) => planExercise({ slot, exercise: machine, logs, bodyWeight: 80, profile: weekProfile(4), cycleIndex: 0, today: '2026-03-10' });
+    const auto = run(base);
+    assert.equal(auto.step, 2.4);
+    assert.ok(Math.abs(((auto.sets[0].weight - 33.6) / 2.4) - Math.round((auto.sets[0].weight - 33.6) / 2.4)) < 1e-6, `вес ${auto.sets[0].weight} на сетке 2.4`);
+    const manual = run({ ...base, step: 1 });
+    assert.equal(manual.step, 1);
+    assert.equal(manual.stepSource, 'slot');
+});
+
+test('без истории шаг берётся по оборудованию', () => {
+    const p = plan({ logs: [] });
+    assert.equal(p.step, 2.5);
+    assert.equal(p.stepSource, 'default');
+});
+
+// Реальные истории из выгрузки пользователя: у тренажёров разные минимальные прибавки
+const historyOf = (counts) => Object.entries(counts).flatMap(([w, c]) =>
+    Array.from({ length: c }, (_, i) => ({ date: `2026-0${1 + (i % 9)}-01`, weight: Number(w), reps: 10, exerciseId: 1, id: i })));
+
+test('жим ногами: блины по 4.5 кг -> шаг 9, редкие «нечётные» веса (109, 120) сетку не ломают', () => {
+    const grid = inferWeightGrid(historyOf({ 63: 1, 72: 7, 81: 3, 90: 6, 99: 9, 108: 5, 109: 6, 117: 18, 120: 6, 126: 6 }));
+    assert.equal(grid.step, 9);
+    assert.equal(Math.abs((grid.anchor - 117) % 9), 0, 'якорь на сетке 63, 72, … 126');
+});
+
+test('стек с шагом 4.5 кг, вес записывали округлённо (18, 23, 27, 32, 36, 41, 45) -> шаг 4.5', () => {
+    assert.equal(inferWeightGrid(historyOf({ 18: 1, 23: 3, 27: 4, 32: 8, 36: 14, 41: 17, 45: 3 })).step, 4.5);
+});
+
+test('мало разных весов (меньше четырёх) — шаг по оборудованию, а не по случайным скачкам', () => {
+    assert.equal(inferWeightGrid(historyOf({ 60: 3, 70: 9, 80: 11 })), null);
+    assert.equal(inferWeightGrid(historyOf({ 40: 6, 41: 3, 42.5: 8 })), null);
+});
+
+test('мелкий шаг не принимается за «округление»: веса 20, 21, 22, 23, 25 -> шаг 1', () => {
+    assert.equal(inferWeightGrid(historyOf({ 20: 2, 21: 2, 22: 2, 23: 2, 25: 2 })).step, 1);
+});
+
+test('цель на тренажёре с шагом 9 кг ложится на его сетку (63, 72, …, 117, 126)', () => {
+    const press = { id: 1, equipment: 'lever', usesBodyweight: 0, movementPattern: 'squat' };
+    const slot = { exerciseId: 1, role: 'accessory', sets: 3, repsMin: null, repsMax: null };
+    const logs = [...historyOf({ 63: 1, 72: 7, 81: 3, 90: 6, 99: 9, 108: 5, 109: 6, 117: 18, 120: 6, 126: 6 }), { date: '2026-03-03', weight: 109, reps: 10, exerciseId: 1, id: 999 }];
+    for (const week of [1, 2, 3, 4, 5]) {
+        const p = planExercise({ slot, exercise: press, logs, bodyWeight: 86, profile: weekProfile(week), cycleIndex: 0, today: '2026-03-10' });
+        assert.equal(p.step, 9);
+        assert.equal(Math.abs((p.sets[0].weight - 117) % 9), 0, `неделя ${week}: ${p.sets[0].weight} на сетке 9 кг, хотя последний вес был нечётным (109)`);
+    }
+});
+
+test('при равных вариантах якорь сетки — самый свежий вес (а не случайный старый)', () => {
+    const logs = [
+        { date: '2026-01-01', weight: 18, reps: 10, id: 1 }, { date: '2026-01-02', weight: 23, reps: 10, id: 2 },
+        { date: '2026-01-03', weight: 27, reps: 10, id: 3 }, { date: '2026-01-04', weight: 32, reps: 10, id: 4 },
+        { date: '2026-01-05', weight: 36, reps: 10, id: 5 }, { date: '2026-01-06', weight: 41, reps: 10, id: 6 },
+        { date: '2026-01-07', weight: 45, reps: 10, id: 7 },
+    ];
+    assert.deepEqual(inferWeightGrid(logs), { step: 4.5, anchor: 45 });
 });

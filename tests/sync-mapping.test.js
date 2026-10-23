@@ -133,6 +133,7 @@ test('план программы: слоты уходят по UUID упраж�
         ],
         cycle: { index: 1, weeks: 5, week: 3, startedAt: '2026-10-01', weekStartedAt: '2026-10-15', sessionsThisWeek: 1 },
         sessionsPerWeek: 2,
+        cycleWeeks: 4,
     };
     const payload = buildPlanPayload(program, idToUuid);
     assert.equal(payload.slots.length, 2, 'слот неизвестного упражнения не уходит');
@@ -146,9 +147,12 @@ test('план программы: слоты уходят по UUID упраж�
     assert.equal(back.unknown, 1);
     assert.equal(back.cycle.week, 3);
     assert.equal(back.sessionsPerWeek, 2);
+    assert.equal(payload.cycleWeeks, 4);
+    assert.equal(back.cycleWeeks, 4);
 });
 
-test('план: без слотов, цикла и настроек — null; resolvePlan(null) — null', () => {
+test('план: без слотов, цикла и настроек — null; одной длины цикла достаточно для плана', () => {
     assert.equal(buildPlanPayload({ exerciseIds: [1] }, new Map([[1, 'u1']])), null);
+    assert.equal(buildPlanPayload({ exerciseIds: [], cycleWeeks: 6 }, new Map()).cycleWeeks, 6);
     assert.equal(resolvePlan(null, new Map()), null);
 });

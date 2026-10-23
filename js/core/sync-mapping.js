@@ -122,8 +122,8 @@ export function buildPlanPayload(program, exerciseIdToUUID) {
             sessionsThisWeek: program.cycle.sessionsThisWeek || 0,
         }
         : null;
-    if (slots.length === 0 && !cycle && !program.sessionsPerWeek) return null;
-    return { slots, cycle, sessionsPerWeek: program.sessionsPerWeek || null };
+    if (slots.length === 0 && !cycle && !program.sessionsPerWeek && !program.cycleWeeks) return null;
+    return { slots, cycle, sessionsPerWeek: program.sessionsPerWeek || null, cycleWeeks: program.cycleWeeks || null };
 }
 
 /** Программа -> серверная модель; упражнения без известного UUID пропускаются. */
@@ -156,7 +156,7 @@ export function resolvePlan(plan, uuidToExerciseId) {
             ...(slot.step ? { step: slot.step } : {}),
         });
     }
-    return { slots, cycle: plan.cycle || undefined, sessionsPerWeek: plan.sessionsPerWeek || undefined, unknown };
+    return { slots, cycle: plan.cycle || undefined, sessionsPerWeek: plan.sessionsPerWeek || undefined, cycleWeeks: plan.cycleWeeks || undefined, unknown };
 }
 
 /** UUID упражнений программы -> локальные id; unknown — сколько упражнений ещё не загружено локально. */

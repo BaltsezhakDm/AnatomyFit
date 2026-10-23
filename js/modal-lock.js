@@ -5,6 +5,7 @@ const MODAL_IDS = [
     'swap-exercise-modal',
     'movement-picker-modal',
     'auth-modal',
+    'session-summary-modal',
 ];
 
 /**

@@ -3,6 +3,7 @@ import { showToast, showConfirm, switchTab } from './ui.js';
 import { startWorkoutSession, loadWorkoutHistory } from './workout.js';
 import { defaultSlot, normalizeSlots } from './core/planner.js';
 import { renderCycleCard } from './plan-ui.js';
+import { setCycleLength } from './core/planner.js';
 
 export let selectedExercisesForCreation = [];
 export let editingProgramId = null;
@@ -136,6 +137,11 @@ export function updateSelectedExercisesPreview(exerciseMap) {
                     </span>
                 </label>
             </div>
+            <label class="flex items-center gap-2 text-[10px] text-zinc-500">
+                <span class="whitespace-nowrap">Шаг веса, кг</span>
+                <input type="number" min="0.1" max="100" step="0.1" inputmode="decimal" placeholder="авто" value="${slot.step ?? ''}" onchange="window.updateSlotField(${exId}, 'step', this.value)" class="${inputClass} w-16">
+                <span class="text-zinc-600">пусто — определяется по вашей истории (5, 1, 2.4 …)</span>
+            </label>
         </div>`;
     }).join('');
 }
@@ -151,6 +157,9 @@ export async function updateSlotField(exId, field, rawValue) {
     if (!slot) return;
     if (field === 'role') {
         slot.role = rawValue === 'main' ? 'main' : 'accessory';
+    } else if (field === 'step') {
+        const parsed = parseFloat(String(rawValue).replace(',', '.'));
+        if (parsed > 0) slot.step = Math.min(100, Math.round(parsed * 10) / 10); else delete slot.step; // пусто = «авто»
     } else if (field === 'sets') {
         slot.sets = Math.min(10, Math.max(1, parseInt(rawValue) || 3));
     } else {
@@ -213,13 +222,18 @@ export async function createNewProgram() {
     const slots = selectedExercisesForCreation.map(id => ({ exerciseId: id, ...selectedSlots[id] }));
     const sessionsInput = document.getElementById('program-sessions-per-week');
     const sessionsPerWeek = Math.min(7, Math.max(1, parseInt(sessionsInput?.value) || 1));
+    const cycleWeeks = Math.min(12, Math.max(2, parseInt(document.getElementById('program-cycle-weeks')?.value) || 5));
 
     if (editingProgramId !== null) {
+        const existingProgram = await db.programs.get(editingProgramId);
         await db.programs.update(editingProgramId, {
             name,
             exerciseIds: [...selectedExercisesForCreation],
             slots,
-            sessionsPerWeek
+            sessionsPerWeek,
+            cycleWeeks,
+            // Идущий цикл подстраивается под новую длину (текущая неделя не выходит за границы)
+            ...(existingProgram?.cycle ? { cycle: setCycleLength(existingProgram.cycle, cycleWeeks) } : {})
         });
         showToast("Программа обновлена успешно!", "success");
     } else {
@@ -227,7 +241,8 @@ export async function createNewProgram() {
             name,
             exerciseIds: [...selectedExercisesForCreation],
             slots,
-            sessionsPerWeek
+            sessionsPerWeek,
+            cycleWeeks
         });
         showToast("Программа создана успешно!", "success");
     }
@@ -253,6 +268,8 @@ export async function editRoutine(id) {
     if (nameInput) nameInput.value = routine.name;
     const sessionsInput = document.getElementById('program-sessions-per-week');
     if (sessionsInput) sessionsInput.value = routine.sessionsPerWeek || 1;
+    const weeksSelect = document.getElementById('program-cycle-weeks');
+    if (weeksSelect) weeksSelect.value = String(routine.cycle?.weeks || routine.cycleWeeks || 5);
 
     selectedExercisesForCreation = [...routine.exerciseIds];
     const allExercises = await db.exercises.toArray();
@@ -295,6 +312,8 @@ export function cancelEditRoutine() {
     if (nameInput) nameInput.value = '';
     const sessionsInput = document.getElementById('program-sessions-per-week');
     if (sessionsInput) sessionsInput.value = 1;
+    const weeksSelectReset = document.getElementById('program-cycle-weeks');
+    if (weeksSelectReset) weeksSelectReset.value = '5';
 
     selectedExercisesForCreation = [];
     selectedSlots = {};

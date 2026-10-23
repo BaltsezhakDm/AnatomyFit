@@ -179,7 +179,7 @@ test('план программы: слоты, цикл и «тренирово�
     const b = await seedExercise({ name: 'B' });
     const cycle = { index: 2, weeks: 5, week: 4, startedAt: '2026-09-01', weekStartedAt: '2026-09-22', sessionsThisWeek: 1 };
     const pid = await db.programs.add({
-        name: 'Push', exerciseIds: [a.id, b.id], sessionsPerWeek: 2, cycle,
+        name: 'Push', exerciseIds: [a.id, b.id], sessionsPerWeek: 2, cycleWeeks: 4, cycle,
         slots: [{ exerciseId: a.id, role: 'main', sets: 4, repsMin: 5, repsMax: 8 }, { exerciseId: b.id, role: 'accessory', sets: 3, repsMin: null, repsMax: null }],
     });
     const program = await db.programs.get(pid);
@@ -196,6 +196,7 @@ test('план программы: слоты, цикл и «тренирово�
     assert.deepEqual(restored.slots.map(s => [s.exerciseId, s.role, s.sets]), [[a.id, 'main', 4], [b.id, 'accessory', 3]]);
     assert.deepEqual(restored.cycle, cycle);
     assert.equal(restored.sessionsPerWeek, 2);
+    assert.equal(restored.cycleWeeks, 4);
 });
 
 test('pull программы без плана не стирает локальные слоты и цикл', async () => {

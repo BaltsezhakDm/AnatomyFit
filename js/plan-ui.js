@@ -5,11 +5,12 @@
  */
 
 import { db, getBodyWeight, getLocalDateString } from './db.js';
-import { showToast } from './ui.js';
+import { showToast, showConfirm } from './ui.js';
 import {
-    planSession, defaultCycle, advanceCycle, jumpToDeload, weekProfile,
-    shouldSuggestAdvance, nextOpenSetIndex, DEFAULT_SESSIONS_PER_WEEK,
+    planSession, defaultCycle, advanceCycle, jumpToDeload, weekProfile, repeatWeek, restartCycle, postponeDeload,
+    shouldSuggestAdvance, nextOpenSetIndex, DEFAULT_SESSIONS_PER_WEEK, DEFAULT_MESOCYCLE_WEEKS,
 } from './core/planner.js';
+import { plateauAdvice } from './core/trends.js';
 
 function escapeHtml(str) {
     return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -27,11 +28,10 @@ export function formatWeight(weight, exercise) {
 }
 
 /** План программы на сегодня + контекст (упражнения, цикл). Цикл не сохраняется, пока пользователь не меняет неделю. */
-export async function loadProgramPlan(programId) {
+export async function loadProgramPlan(programId, { today = getLocalDateString(), cycle = null } = {}) {
     const program = await db.programs.get(programId);
     if (!program) return null;
 
-    const today = getLocalDateString();
     const exercises = await db.exercises.toArray();
     const exercisesById = Object.fromEntries(exercises.map(e => [e.id, e]));
     const logs = program.exerciseIds.length > 0
@@ -40,7 +40,8 @@ export async function loadProgramPlan(programId) {
     const logsByExerciseId = {};
     for (const log of logs) (logsByExerciseId[log.exerciseId] ||= []).push(log);
 
-    const plan = planSession({ program, exercisesById, logsByExerciseId, bodyWeight: getBodyWeight(), today });
+    const activeCycle = cycle || program.cycle || defaultCycle(today, { weeks: program.cycleWeeks || DEFAULT_MESOCYCLE_WEEKS });
+    const plan = planSession({ program, exercisesById, logsByExerciseId, bodyWeight: getBodyWeight(), today, cycle: activeCycle });
     return { program, plan, exercisesById, today };
 }
 
@@ -68,9 +69,12 @@ function planLine(entry, exercise) {
     const last = entry.lastTime
         ? `<span class="text-zinc-500">было ${formatWeight(entry.lastTime.weight, exercise)} × ${entry.lastTime.reps} (${formatDay(entry.lastTime.date)})</span>`
         : '';
+    const plateau = entry.plateau
+        ? `<span class="ml-1 text-[9px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded px-1 align-middle" title="${escapeHtml(plateauAdvice(entry.plateau))}">${entry.plateau.status === 'regressing' ? 'спад' : 'плато'}</span>`
+        : '';
     return `
         <div class="flex items-baseline justify-between gap-2 text-xs">
-            <span class="text-zinc-200 font-medium truncate">${escapeHtml(exercise.name)}</span>
+            <span class="text-zinc-200 font-medium truncate">${escapeHtml(exercise.name)}${plateau}</span>
             <span class="font-mono text-zinc-100 whitespace-nowrap">${target}</span>
         </div>
         ${last ? `<div class="text-[10px] -mt-1 text-right">${last}</div>` : ''}`;
@@ -110,6 +114,10 @@ export async function renderCycleCard() {
             <div class="space-y-1.5 pt-1 border-t border-zinc-900">
                 ${plan.exercises.map(entry => planLine(entry, exercisesById[entry.exerciseId])).join('')}
             </div>
+            ${plan.exercises.some(e => e.plateau) ? `
+            <div class="text-[11px] bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1.5 text-amber-200">
+                ${plan.exercises.filter(e => e.plateau).map(e => escapeHtml(exercisesById[e.exerciseId].name)).slice(0, 3).join(', ')} — ${escapeHtml(plateauAdvice(plan.exercises.find(e => e.plateau).plateau))}
+            </div>` : ''}
             ${plan.fatigue ? `
             <div class="text-[11px] bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1.5 space-y-1.5">
                 <div class="text-amber-200">📉 Расчётная сила падает несколько тренировок подряд — возможно, пора на разгрузку.</div>
@@ -119,8 +127,19 @@ export async function renderCycleCard() {
             <div class="text-[11px] bg-brand/10 border border-brand/20 rounded-lg px-2 py-1.5 flex items-center justify-between gap-2">
                 <span class="text-zinc-200">${(cycle.sessionsThisWeek || 0) >= sessionsPerWeek ? `Неделя ${cycle.week} выполнена` : `Прошло 7 дней недели ${cycle.week}`}.</span>
                 <button onclick="window.advanceProgramWeek(${program.id})" class="text-brand font-bold whitespace-nowrap">Следующая неделя →</button>
-            </div>` : `
-            <button onclick="window.advanceProgramWeek(${program.id})" class="text-[10px] text-zinc-500 hover:text-zinc-300 underline underline-offset-2">Пропустить на следующую неделю</button>`}
+            </div>` : ''}
+            <details class="text-[11px] text-zinc-400">
+                <summary class="cursor-pointer text-zinc-500 hover:text-zinc-300">Настройки цикла</summary>
+                <div class="pt-2 space-y-2">
+                    <div class="text-[10px] text-zinc-500">Цикл начат ${formatDay(cycle.startedAt)} · неделя началась ${formatDay(cycle.weekStartedAt)} · длина ${cycle.weeks} нед. (меняется в программе)</div>
+                    <div class="flex flex-wrap gap-1.5">
+                        ${suggestAdvance ? '' : `<button onclick="window.advanceProgramWeek(${program.id})" class="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-brand/40">Следующая неделя</button>`}
+                        <button onclick="window.repeatProgramWeek(${program.id})" class="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-brand/40">Повторить неделю</button>
+                        ${profile.isDeload ? `<button onclick="window.postponeProgramDeload(${program.id})" class="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-brand/40">Отложить разгрузку</button>` : ''}
+                        <button onclick="window.restartProgramCycle(${program.id})" class="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-red-400/40 text-zinc-400">Начать цикл заново</button>
+                    </div>
+                </div>
+            </details>
         </div>`;
 }
 
@@ -128,7 +147,7 @@ export async function advanceProgramWeek(programId) {
     const program = await db.programs.get(programId);
     if (!program) return;
     const today = getLocalDateString();
-    const next = advanceCycle(program.cycle || defaultCycle(today), today);
+    const next = advanceCycle(program.cycle || defaultCycle(today, { weeks: program.cycleWeeks || DEFAULT_MESOCYCLE_WEEKS }), today);
     await saveCycle(programId, next);
     const info = weekProfile(next.week, next.weeks);
     showToast(next.week === 1 && next.index > 0
@@ -138,11 +157,36 @@ export async function advanceProgramWeek(programId) {
     await renderCycleCard();
 }
 
+async function updateCycle(programId, change, toastText) {
+    const program = await db.programs.get(programId);
+    if (!program) return;
+    const today = getLocalDateString();
+    const base = program.cycle || defaultCycle(today, { weeks: program.cycleWeeks || DEFAULT_MESOCYCLE_WEEKS });
+    await saveCycle(programId, change(base, today));
+    if (toastText) showToast(toastText, 'info');
+    resetPlanCache();
+    await renderCycleCard();
+}
+
+export function repeatProgramWeek(programId) {
+    return updateCycle(programId, repeatWeek, 'Неделя будет повторена');
+}
+
+export function postponeProgramDeload(programId) {
+    return updateCycle(programId, postponeDeload, 'Разгрузка отложена: ещё одна рабочая неделя');
+}
+
+export async function restartProgramCycle(programId) {
+    const ok = await showConfirm('Начать мезоцикл заново с недели 1? Диапазон повторений и номер цикла сохранятся.');
+    if (!ok) return;
+    await updateCycle(programId, restartCycle, 'Цикл начат заново');
+}
+
 export async function deloadProgramNow(programId) {
     const program = await db.programs.get(programId);
     if (!program) return;
     const today = getLocalDateString();
-    await saveCycle(programId, jumpToDeload(program.cycle || defaultCycle(today), today));
+    await saveCycle(programId, jumpToDeload(program.cycle || defaultCycle(today, { weeks: program.cycleWeeks || DEFAULT_MESOCYCLE_WEEKS }), today));
     showToast('Переключено на неделю разгрузки', 'info');
     resetPlanCache();
     await renderCycleCard();
@@ -152,7 +196,7 @@ export async function deloadProgramNow(programId) {
 export async function recordProgramSessionDone(programId) {
     const program = await db.programs.get(programId);
     if (!program) return;
-    const cycle = program.cycle || defaultCycle(getLocalDateString());
+    const cycle = program.cycle || defaultCycle(getLocalDateString(), { weeks: program.cycleWeeks || DEFAULT_MESOCYCLE_WEEKS });
     await saveCycle(programId, { ...cycle, sessionsThisWeek: (cycle.sessionsThisWeek || 0) + 1 });
     resetPlanCache();
 }
@@ -184,6 +228,7 @@ export async function renderExercisePlan(session, exerciseId, { autoFill = false
     const advisor = document.getElementById('progression-advisor-card');
     // Когда показан план мезоцикла, старые «варианты прогрессии» скрываем — две разные рекомендации сбивают с толку
     const setPlanVisible = visible => {
+        if (!visible) setWeightStepButtons(2.5);
         container.classList.toggle('hidden', !visible);
         if (advisor) advisor.classList.toggle('has-plan', visible);
     };
@@ -229,13 +274,15 @@ export async function renderExercisePlan(session, exerciseId, { autoFill = false
 
     const canApply = nextIndex !== null && entry.status === 'planned';
     setPlanVisible(true);
+    setWeightStepButtons(entry.step);
+    const stepSource = { slot: 'задан в программе', history: 'по вашей истории', default: 'по умолчанию для оборудования' }[entry.stepSource];
     container.innerHTML = `
         <div class="flex items-center justify-between">
             <span class="text-[9px] uppercase tracking-wider font-bold text-brand flex items-center gap-1">
                 <i data-lucide="target" class="w-3 h-3"></i>
                 План · неделя ${profile.week}/${profile.weeks}${profile.isDeload ? ' · разгрузка' : ''}
             </span>
-            <span class="text-[10px] text-zinc-500 font-mono">${entry.range.min}–${entry.range.max} повт.</span>
+            <span class="text-[10px] text-zinc-500 font-mono" title="Шаг веса ${stepSource}">${entry.range.min}–${entry.range.max} повт. · шаг ${entry.step} кг</span>
         </div>
         <div class="space-y-1">${rows}</div>
         ${hint ? `<p class="text-[11px] text-zinc-400">${hint}</p>` : ''}
@@ -247,6 +294,17 @@ export async function renderExercisePlan(session, exerciseId, { autoFill = false
 
     // Автоподстановка: после записи подхода в поля сразу попадает цель следующего — по тому же правилу, что и кнопка
     if (autoFill && canApply) applyPlanTarget({ silent: true });
+}
+
+/** Кнопки «−/+» у веса шагают на шаг тренажёра этого упражнения (по умолчанию 2.5). */
+function setWeightStepButtons(step) {
+    const minus = document.getElementById('btn-weight-minus');
+    const plus = document.getElementById('btn-weight-plus');
+    if (!minus || !plus) return;
+    minus.textContent = `-${step}`;
+    plus.textContent = `+${step}`;
+    minus.setAttribute('onclick', `adjustValue('input-weight', ${-step})`);
+    plus.setAttribute('onclick', `adjustValue('input-weight', ${step})`);
 }
 
 /** Подставляет цель следующего подхода в поля ввода — только по нажатию кнопки. */
@@ -263,5 +321,8 @@ export function applyPlanTarget({ silent = false } = {}) {
 
 window.renderCycleCard = renderCycleCard;
 window.advanceProgramWeek = advanceProgramWeek;
+window.repeatProgramWeek = repeatProgramWeek;
+window.postponeProgramDeload = postponeProgramDeload;
+window.restartProgramCycle = restartProgramCycle;
 window.deloadProgramNow = deloadProgramNow;
 window.applyPlanTarget = applyPlanTarget;

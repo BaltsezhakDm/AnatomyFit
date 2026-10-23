@@ -12,6 +12,7 @@
 
 import { calculate1RM, getEffectiveWeight } from './exercise.js';
 import { getProgressionAdvice } from './progression.js';
+import { detectPlateau } from './trends.js';
 
 export const DEFAULT_MESOCYCLE_WEEKS = 5;
 /** Сдвиг диапазона повторений основных движений по номеру мезоцикла (по кругу). */
@@ -33,6 +34,15 @@ const FATIGUE_DROP = 0.02;
 const ASSUMED_LAST_RIR = 2;
 const ROLE_DEFAULT_RANGE = { main: { min: 6, max: 10 }, accessory: { min: 10, max: 15 } };
 const INFERRED_RANGE_SESSIONS = 3;
+const MIN_INFERRED_STEP = 0.5;
+const GRID_MAX_STEP = 20;
+const GRID_STEP_RESOLUTION = 0.05;
+const GRID_MIN_DISTINCT = 4;
+const GRID_MIN_SHARE = 0.75;
+const GRID_ROUNDED_MIN_SHARE = 0.85;
+const GRID_ROUNDED_MIN_STEP = 3;
+const GRID_EXACT_TOLERANCE = 0.05 + 1e-9;
+const GRID_HISTORY_SETS = 60;
 
 const MAIN_PATTERNS = new Set(['squat', 'deadlift', 'bench_press', 'overhead_press', 'row', 'pull_down']);
 const STEP_BY_EQUIPMENT = { barbell: 2.5, dumbbell: 2, cable: 2.5, lever: 2.5, smith: 2.5, bodyweight: 1 };
@@ -74,6 +84,28 @@ export function shouldSuggestAdvance(cycle, sessionsDoneThisWeek, sessionsPerWee
     return sessionsDoneThisWeek >= sessionsPerWeek || days >= 7;
 }
 
+/** Повторить текущую неделю (например, пропустили тренировки): номер недели не меняется, счётчик тренировок обнуляется. */
+export function repeatWeek(cycle, today) {
+    return { ...cycle, weekStartedAt: today, sessionsThisWeek: 0 };
+}
+
+/** Начать мезоцикл заново с недели 1 (номер цикла и длина сохраняются). */
+export function restartCycle(cycle, today) {
+    return { ...cycle, week: 1, startedAt: today, weekStartedAt: today, sessionsThisWeek: 0 };
+}
+
+/** Отложить разгрузку: из недели разгрузки вернуться на последнюю неделю накопления. В остальных неделях ничего не меняется. */
+export function postponeDeload(cycle, today) {
+    if (cycle.week < cycle.weeks) return cycle;
+    return { ...cycle, week: cycle.weeks - 1, weekStartedAt: today, sessionsThisWeek: 0 };
+}
+
+/** Новая длина цикла (2-12 недель): текущая неделя не выходит за границы. */
+export function setCycleLength(cycle, weeks) {
+    const total = Math.min(12, Math.max(2, Math.round(weeks)));
+    return { ...cycle, weeks: total, week: Math.min(cycle.week, total) };
+}
+
 /** Досрочная разгрузка: перейти сразу на последнюю неделю цикла (например, по сигналу усталости). */
 export function jumpToDeload(cycle, today) {
     return { ...cycle, week: cycle.weeks, weekStartedAt: today, sessionsThisWeek: 0 };
@@ -112,8 +144,73 @@ export function roundToStep(value, step) {
     return Math.round(Math.round(value / step) * step * 100) / 100;
 }
 
-export function stepFor(exercise, slot) {
-    return slot.step || STEP_BY_EQUIPMENT[exercise.equipment] || 2.5;
+/** Шаг веса по умолчанию для оборудования. */
+export function defaultStepFor(exercise) {
+    return STEP_BY_EQUIPMENT[exercise.equipment] || 2.5;
+}
+
+/**
+ * Сетка весов тренажёра по истории: наибольший шаг, на который «ложатся» не менее 75% подходов (с допуском на округление
+ * записи до целых). Так сами определяются шаги 5, 1 или 2.4 кг, 9 кг у жима ногами (по 4.5 кг блины), 4.5 кг у стека,
+ * вес которого записывали округлённо (18, 23, 27, 32 …). Редкие «нечётные» веса сетку не ломают.
+ * Нужны минимум 4 разных веса: меньшего недостаточно, чтобы отличить шаг тренажёра от случайных скачков.
+ * @returns {{ step: number, anchor: number }|null} anchor — любой вес на найденной сетке
+ */
+export function inferWeightGrid(logs) {
+    const recent = logs.slice().sort((a, b) => (a.date + String(a.id ?? '')).localeCompare(b.date + String(b.id ?? ''))).slice(-GRID_HISTORY_SETS);
+    const counts = new Map();
+    for (const log of recent) counts.set(log.weight, (counts.get(log.weight) || 0) + 1);
+    // Веса от самого свежего: при равенстве якорем становится недавно использованный вес, а не случайный старый
+    const weights = [...new Set(recent.map(l => l.weight).reverse())];
+    if (weights.length < GRID_MIN_DISTINCT) return null;
+    const total = recent.length;
+
+    // Лучший якорь для заданного шага: тот, на сетку которого ложится больше всего подходов
+    const fit = (step, tolerance, minShare) => {
+        let best = null;
+        for (const anchor of weights) {
+            let matchedSets = 0;
+            let matchedWeights = 0;
+            for (const w of weights) {
+                const offset = Math.abs((w - anchor) / step);
+                if (Math.abs(offset - Math.round(offset)) * step <= tolerance) {
+                    matchedSets += counts.get(w);
+                    matchedWeights++;
+                }
+            }
+            if (!best || matchedSets > best.matchedSets) best = { anchor, matchedSets, matchedWeights };
+        }
+        return best.matchedWeights >= GRID_MIN_DISTINCT && best.matchedSets / total >= minShare ? { step, anchor: best.anchor } : null;
+    };
+
+    // Проход 1: точная сетка (допускаются дробные шаги вроде 2.4 или 1.25)
+    let exact = null;
+    for (let s = GRID_MAX_STEP; s >= MIN_INFERRED_STEP - 1e-9 && !exact; s -= GRID_STEP_RESOLUTION) {
+        exact = fit(Math.round(s * 100) / 100, GRID_EXACT_TOLERANCE, GRID_MIN_SHARE);
+    }
+    // Проход 2: вес записывали округлённо до целых (стек 4.5 кг: 18, 23, 27, 32 …) — шаги кратные 0.5 с допуском 0.5
+    let rounded = null;
+    // Допуск не больше 1/6 шага: на мелких шагах округление до целых неотличимо от любой «сетки»
+    for (let step = GRID_MAX_STEP; step >= GRID_ROUNDED_MIN_STEP && !rounded; step -= 0.5) {
+        rounded = fit(step, Math.min(0.5, step / 6) + 1e-9, GRID_ROUNDED_MIN_SHARE);
+    }
+    if (exact && rounded) return rounded.step > exact.step ? rounded : exact;
+    return exact || rounded;
+}
+
+/** Только шаг сетки (см. inferWeightGrid). */
+export function inferWeightStep(logs) {
+    return inferWeightGrid(logs)?.step ?? null;
+}
+
+/** Шаг веса: явный в слоте программы -> по истории упражнения -> по оборудованию. */
+export function stepFor(exercise, slot, inferred = null) {
+    return slot.step || inferred || defaultStepFor(exercise);
+}
+
+/** Привязка веса к сетке пользователя: от последнего использованного веса кратно шагу (учитывает «нечётные» начала шкалы). */
+export function snapToGrid(value, step, anchor) {
+    return Math.round((anchor + Math.round((value - anchor) / step) * step) * 100) / 100;
 }
 
 /** Диапазон повторений, который реально использует пользователь: медиана повторов последних тренировок ±2. */
@@ -189,12 +286,15 @@ export function planExercise({ slot, exercise, logs, bodyWeight, profile, cycleI
     const targetReps = range.min + Math.round((range.max - range.min) / 2);
     const rir = profile.rir;
     const setCount = Math.max(1, Math.round(slot.sets * profile.volume));
-    const step = stepFor(exercise, slot);
+    const grid = inferWeightGrid(logs);
+    const step = stepFor(exercise, slot, grid?.step ?? null);
+    const stepSource = slot.step ? 'slot' : grid ? 'history' : 'default';
     // «Недавний максимум» не подставляется в цель автоматически — только показывается рядом с «прошлым разом»
     const advice = getProgressionAdvice(logs, exercise, bodyWeight);
     const recentBest = advice.type === 'advice' ? advice.recentBest : null;
 
-    const base = { exerciseId: exercise.id, role: slot.role, range, targetReps, rir, deload: profile.isDeload, recentBest };
+    const plateau = detectPlateau(sessions);
+    const base = { exerciseId: exercise.id, role: slot.role, range, targetReps, rir, step, stepSource, deload: profile.isDeload, recentBest, plateau: plateau.status === 'plateau' || plateau.status === 'regressing' ? plateau : null };
 
     if (!last) {
         return {
@@ -206,6 +306,8 @@ export function planExercise({ slot, exercise, logs, bodyWeight, profile, cycleI
     }
 
     const lastWeight = last.best.weight;
+    // Сетка весов: найденная по истории (если шаг не задан вручную), иначе — от последнего веса пользователя
+    const gridAnchor = !slot.step && grid ? grid.anchor : lastWeight;
     // Все границы считаются по эффективному весу (вес тела + добавочный): добавочный вес бывает отрицательным —
     // это подтягивания с поддержкой, и рост нагрузки там означает уменьшение помощи
     const bw = exercise.usesBodyweight ? bodyWeight : 0;
@@ -215,14 +317,14 @@ export function planExercise({ slot, exercise, logs, bodyWeight, profile, cycleI
 
     let weight;
     if (profile.isDeload) {
-        weight = roundToStep((lastEffective * DELOAD_WEIGHT_RATIO) - bw, step);
+        weight = snapToGrid((lastEffective * DELOAD_WEIGHT_RATIO) - bw, step, gridAnchor);
         note = 'Разгрузка: вес ниже, объём вдвое меньше';
     } else {
         const effective = oneRM / (1 + (targetReps + rir) / 30);
-        weight = roundToStep(effective - bw, step);
+        weight = snapToGrid(effective - bw, step, gridAnchor);
 
-        const ceiling = Math.max(roundToStep(lastEffective * MAX_WEIGHT_GAIN - bw, step), lastWeight + step);
-        const floor = roundToStep(lastEffective * MIN_WEIGHT_RATIO - bw, step);
+        const ceiling = Math.max(snapToGrid(lastEffective * MAX_WEIGHT_GAIN - bw, step, gridAnchor), snapToGrid(lastWeight + step, step, gridAnchor));
+        const floor = snapToGrid(lastEffective * MIN_WEIGHT_RATIO - bw, step, gridAnchor);
         if (weight > ceiling) { weight = ceiling; note = 'Рост ограничен 5% за тренировку'; }
         if (weight < floor) { weight = floor; }
 

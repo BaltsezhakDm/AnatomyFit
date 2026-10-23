@@ -8,10 +8,13 @@ import { computeAllTimeBests } from './core/records.js';
 import { getMonthlyBuckets } from './core/periods.js';
 import { showToast, showConfirm } from './ui.js';
 import { parseLocalDate } from './core/dates.js';
+import { sessionsOf } from './core/planner.js';
+import { seriesFromSessions, detectPlateau, plateauAdvice } from './core/trends.js';
 
 let monthlyVolumeChartInstance = null;
 let muscleTrendChartInstance = null;
 let bodyweightChartInstance = null;
+let exerciseTrendChartInstance = null;
 
 export async function renderProgressTab() {
     const logs = await db.workoutLogs.toArray();
@@ -23,6 +26,8 @@ export async function renderProgressTab() {
     renderMonthlyVolumeChart(logs, exercisesById);
     populateMuscleTrendSelect();
     renderMuscleTrendChart(logs, exercisesById);
+    populateExerciseTrendSelect(logs, exercisesById);
+    renderExerciseTrend(logs, exercisesById);
 
     const dateInput = document.getElementById('bw-log-date');
     if (dateInput && !dateInput.value) {
@@ -334,3 +339,101 @@ window.renderPRList = renderPRList;
 window.renderMuscleTrendChart = renderMuscleTrendChart;
 window.logBodyWeightEntry = logBodyWeightEntry;
 window.deleteBodyWeightEntry = deleteBodyWeightEntry;
+
+
+// ---------- Динамика упражнения ----------
+
+const TREND_STATUS_TEXT = {
+    progressing: { text: 'Растёт: за последние тренировки есть новый пик', cls: 'text-emerald-400' },
+    plateau: { text: 'Плато', cls: 'text-amber-300' },
+    regressing: { text: 'Спад', cls: 'text-red-400' },
+    changed: { text: 'Нагрузки сильно отличаются от прежних — похоже, сменили вариацию или оборудование', cls: 'text-zinc-400' },
+    insufficient: { text: 'Мало данных для оценки (нужно минимум 6 тренировок)', cls: 'text-zinc-500' },
+};
+
+function populateExerciseTrendSelect(logs, exercisesById) {
+    const select = document.getElementById('exercise-trend-select');
+    if (!select) return;
+    const counts = {};
+    for (const log of logs) counts[log.exerciseId] = (counts[log.exerciseId] || new Set()).add(log.date);
+    const options = Object.entries(counts)
+        .filter(([id]) => exercisesById[id])
+        .sort((a, b) => b[1].size - a[1].size || exercisesById[a[0]].name.localeCompare(exercisesById[b[0]].name));
+
+    const previous = select.value;
+    select.innerHTML = options.length === 0
+        ? '<option value="">Нет данных</option>'
+        : options.map(([id, dates]) => `<option value="${id}">${exercisesById[id].name} · ${dates.size} трен.</option>`).join('');
+    if (previous && select.querySelector(`option[value="${previous}"]`)) select.value = previous;
+}
+
+export async function renderExerciseTrend(logsArg, exercisesByIdArg) {
+    const select = document.getElementById('exercise-trend-select');
+    const canvas = document.getElementById('exercise-trend-chart');
+    const statusEl = document.getElementById('exercise-trend-status');
+    if (!select || !canvas) return;
+
+    const exercisesById = exercisesByIdArg || Object.fromEntries((await db.exercises.toArray()).map(e => [e.id, e]));
+    const exerciseId = parseInt(select.value);
+    const exercise = exercisesById[exerciseId];
+
+    if (exerciseTrendChartInstance) {
+        exerciseTrendChartInstance.destroy();
+        exerciseTrendChartInstance = null;
+    }
+    if (!exercise) {
+        if (statusEl) statusEl.innerHTML = '';
+        return;
+    }
+
+    const allLogs = logsArg || await db.workoutLogs.toArray();
+    const logs = allLogs.filter(l => l.exerciseId === exerciseId);
+    const sessions = sessionsOf(logs, exercise, getBodyWeight(), null); // null — без исключения сегодняшних подходов
+    const series = seriesFromSessions(sessions);
+    const verdict = detectPlateau(sessions);
+
+    if (statusEl) {
+        const info = TREND_STATUS_TEXT[verdict.status];
+        const advice = plateauAdvice(verdict);
+        const change = verdict.changePct !== undefined ? ` (${verdict.changePct > 0 ? '+' : ''}${verdict.changePct}% к прежнему пику)` : '';
+        statusEl.innerHTML = `<span class="font-semibold ${info.cls}">${info.text}${verdict.status === 'insufficient' ? '' : change}</span>${advice ? `<div class="text-zinc-400 mt-0.5">${advice}</div>` : ''}`;
+    }
+
+    const labels = series.map(p => parseLocalDate(p.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }));
+    exerciseTrendChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Расчётный 1ПМ, кг',
+                data: series.map(p => Math.round(p.oneRM * 10) / 10),
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                fill: true,
+                tension: 0.25,
+                pointRadius: 3,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        afterLabel: ctx => {
+                            const p = series[ctx.dataIndex];
+                            return `Лучший подход: ${p.weight} × ${p.reps} · подходов: ${p.sets}`;
+                        },
+                    },
+                },
+            },
+            scales: {
+                x: { ticks: { color: '#71717a', maxTicksLimit: 6 }, grid: { display: false } },
+                y: { ticks: { color: '#71717a' }, grid: { color: 'rgba(63,63,70,0.4)' } },
+            },
+        },
+    });
+}
+
+window.renderExerciseTrend = () => renderExerciseTrend();

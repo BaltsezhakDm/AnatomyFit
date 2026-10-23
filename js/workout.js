@@ -6,6 +6,7 @@ import { getBest1RM } from './core/records.js';
 import { showToast, showConfirm, switchTab } from './ui.js';
 import { syncModalLock } from './modal-lock.js';
 import { renderExercisePlan, resetPlanCache, recordProgramSessionDone, renderCycleCard } from './plan-ui.js';
+import { buildSessionSummary, showSessionSummary } from './session-summary.js';
 import { parseLocalDate } from './core/dates.js';
 
 export let activeSession = null;
@@ -597,10 +598,19 @@ export async function finishWorkoutSession() {
     const conf = await showConfirm("Завершить текущую тренировку и сохранить всю историю?");
     if (!conf) return;
 
+    // Итог собирается до записи тренировки в цикл: план и «следующий раз» считаются по состоянию до завершения
+    let summary = null;
+    if (activeSession) {
+        try {
+            summary = await buildSessionSummary(activeSession);
+        } catch (e) {
+            console.error('Не удалось собрать итог тренировки', e);
+        }
+    }
+
     // Тренировка по программе засчитывается в неделю мезоцикла (только если в ней есть хотя бы один подход)
-    if (activeSession && activeSession.type === 'routine' && activeSession.id) {
-        const setsDone = await db.workoutLogs.where('sessionId').equals(activeSession.sessionId).count();
-        if (setsDone > 0) await recordProgramSessionDone(activeSession.id);
+    if (activeSession && activeSession.type === 'routine' && activeSession.id && summary) {
+        await recordProgramSessionDone(activeSession.id);
     }
 
     localStorage.removeItem('active_session_anatomyfit');
@@ -609,8 +619,13 @@ export async function finishWorkoutSession() {
     buildActiveSessionUI();
     showToast("Тренировка завершена! Отличная работа!", "success");
     await loadWorkoutHistory();
-    switchTab('stats');
     releaseWakeLock();
+
+    if (summary) {
+        showSessionSummary(summary, () => switchTab('stats'));
+    } else {
+        switchTab('stats');
+    }
 }
 
 export async function cancelWorkoutSession() {

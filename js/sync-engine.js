@@ -179,6 +179,7 @@ export async function applyPull(pull) {
               slots: plan.slots,
               ...(plan.cycle ? { cycle: plan.cycle } : {}),
               ...(plan.sessionsPerWeek ? { sessionsPerWeek: plan.sessionsPerWeek } : {}),
+              ...(plan.cycleWeeks ? { cycleWeeks: plan.cycleWeeks } : {}),
             }
           : {};
         if (local) {
