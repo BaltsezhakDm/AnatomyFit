@@ -595,11 +595,11 @@ export async function loadAllExercisesList() {
                             ${tagsHtml}
                         </div>
                     </div>
-                    <div class="flex items-center gap-1 flex-shrink-0">
-                        <button onclick="event.stopPropagation(); window.editExercise(${item.id})" class="text-zinc-400 hover:text-brand p-1.5 transition flex-shrink-0" title="Редактировать">
+                    <div class="flex items-center gap-0.5 flex-shrink-0">
+                        <button onclick="event.stopPropagation(); window.editExercise(${item.id})" class="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-400 hover:text-brand hover:bg-zinc-800/60 transition flex-shrink-0" title="Редактировать" aria-label="Редактировать">
                             <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
                         </button>
-                        <button onclick="event.stopPropagation(); window.deleteExercise(${item.id}, ${item.isCustom})" class="text-zinc-500 hover:text-red-400 p-1.5 transition flex-shrink-0" title="Удалить">
+                        <button onclick="event.stopPropagation(); window.deleteExercise(${item.id}, ${item.isCustom})" class="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-500 hover:text-red-400 hover:bg-zinc-800/60 transition flex-shrink-0" title="Удалить" aria-label="Удалить">
                             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                         </button>
                         ${!item.isCustom ? `

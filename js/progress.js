@@ -1,5 +1,5 @@
 import Chart from 'chart.js/auto';
-import { db, getBodyWeight, getBodyWeightHistory, logBodyWeightEntry as dbLogBodyWeightEntry, deleteBodyWeightEntry as dbDeleteBodyWeightEntry } from './db.js';
+import { db, getBodyWeight, getBodyWeightHistory, logBodyWeightEntry as dbLogBodyWeightEntry, deleteBodyWeightEntry as dbDeleteBodyWeightEntry, getLocalDateString } from './db.js';
 import { MUSCLE_NAMES } from './stats.js';
 import { MUSCLE_COLORS } from './exercises.js';
 import { getExerciseLoads, getEffectiveWeight } from './core/exercise.js';
@@ -7,6 +7,7 @@ import { computeStreaks } from './core/streaks.js';
 import { computeAllTimeBests } from './core/records.js';
 import { getMonthlyBuckets } from './core/periods.js';
 import { showToast, showConfirm } from './ui.js';
+import { parseLocalDate } from './core/dates.js';
 
 let monthlyVolumeChartInstance = null;
 let muscleTrendChartInstance = null;
@@ -25,7 +26,7 @@ export async function renderProgressTab() {
 
     const dateInput = document.getElementById('bw-log-date');
     if (dateInput && !dateInput.value) {
-        dateInput.value = new Date().toISOString().split('T')[0];
+        dateInput.value = getLocalDateString();
     }
     await renderBodyWeightSection();
 
@@ -73,7 +74,7 @@ export async function renderPRList(logsArg, exercisesByIdArg) {
     }
 
     container.innerHTML = prs.map(pr => {
-        const dateObj = new Date(pr.date);
+        const dateObj = parseLocalDate(pr.date);
         const formattedDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
         const color = MUSCLE_COLORS[pr.exercise.primaryMuscle] || '#71717a';
         const weightDesc = pr.exercise.usesBodyweight
@@ -273,7 +274,7 @@ function renderBodyWeightList(history) {
 
     const reversed = [...history].reverse();
     container.innerHTML = reversed.map(entry => {
-        const dateObj = new Date(entry.date);
+        const dateObj = parseLocalDate(entry.date);
         const formattedDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
         return `
         <div class="flex items-center justify-between bg-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-800/40">

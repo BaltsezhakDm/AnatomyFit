@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <title>AnatomyFit — Прогрессия и Программы</title>
 
     <meta name="theme-color" content="#09090b">
@@ -14,10 +14,10 @@
     <link rel="stylesheet" href="/src/style.css">
 </head>
 
-<body class="bg-brand-bg text-zinc-100 font-sans min-h-screen pb-28 antialiased">
+<body class="bg-brand-bg text-zinc-100 font-sans min-h-screen pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] antialiased">
 
     <!-- ХЕДЕР -->
-    <header class="sticky top-0 z-50 bg-brand-bg/80 backdrop-blur-md border-b border-zinc-800 px-4 py-3">
+    <header class="sticky top-0 z-50 bg-brand-bg/85 backdrop-blur-md border-b border-zinc-800 px-4 safe-top pb-3">
         <div class="max-w-4xl mx-auto flex items-center justify-between">
             <div class="flex items-center gap-2">
                 <div class="p-1.5 bg-emerald-500/10 rounded-lg text-brand">
@@ -28,10 +28,18 @@
                     <p class="text-[10px] text-emerald-400 font-medium">Контроль прогрессии нагрузки</p>
                 </div>
             </div>
-            <!-- Индикатор сессии -->
-            <div id="active-session-indicator"
-                class="hidden px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[10px] font-bold border border-amber-500/20 animate-pulse">
-                Тренировка идет
+            <div class="flex items-center gap-2">
+                <!-- Кнопка облака / аккаунта -->
+                <button onclick="window.openAuthModal()" id="btn-cloud-account" title="Облачная синхронизация"
+                    class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition text-xs">
+                    <i id="cloud-sync-icon" data-lucide="cloud" class="w-4 h-4 text-zinc-400"></i>
+                    <span id="cloud-account-label" class="hidden sm:inline font-medium text-zinc-300">Войти</span>
+                </button>
+                <!-- Индикатор сессии -->
+                <div id="active-session-indicator"
+                    class="hidden px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[10px] font-bold border border-amber-500/20 animate-pulse">
+                    Тренировка идет
+                </div>
             </div>
         </div>
     </header>
@@ -122,7 +130,7 @@
 
                 <!-- ТАЙМЕР ОТДЫХА (компактная плавающая таблетка — не перекрывает контент) -->
                 <div id="rest-timer-card"
-                    class="fixed bottom-20 left-1/2 -translate-x-1/2 w-max max-w-[95%] bg-brand-card/95 backdrop-blur-md rounded-full pl-3 pr-1.5 py-1.5 border border-zinc-800 shadow-2xl flex items-center gap-2 z-40 hidden">
+                    class="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] left-1/2 -translate-x-1/2 w-max max-w-[95%] bg-brand-card/95 backdrop-blur-md rounded-full pl-3 pr-1.5 py-1.5 border border-zinc-800 shadow-2xl flex items-center gap-2 z-40 hidden">
                     <i data-lucide="timer" class="w-4 h-4 text-brand flex-shrink-0" id="timer-icon"></i>
                     <span class="text-sm font-mono font-bold text-zinc-100 tabular-nums" id="timer-display">01:30</span>
                     <div class="flex items-center gap-1 ml-1">
@@ -222,7 +230,7 @@
                         <div>
                             <label class="block text-xs text-zinc-400 mb-1">Вес (кг)</label>
                             <div class="relative">
-                                <input type="number" id="input-weight" placeholder="0" step="0.5" min="-100"
+                                <input type="number" id="input-weight" placeholder="0" step="0.5" min="-100" inputmode="decimal"
                                     class="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-10 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand font-mono">
                                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">кг</span>
                             </div>
@@ -230,7 +238,7 @@
                         <div>
                             <label class="block text-xs text-zinc-400 mb-1">Повторения</label>
                             <div class="relative">
-                                <input type="number" id="input-reps" placeholder="0" min="0"
+                                <input type="number" id="input-reps" placeholder="0" min="0" inputmode="numeric"
                                     class="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-10 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand font-mono">
                                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">раз</span>
                             </div>
@@ -251,6 +259,8 @@
                             <button onclick="adjustValue('input-reps', 1)"
                                 class="flex-1 min-h-11 px-3 py-2.5 text-sm bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 rounded-lg text-zinc-300 font-mono font-bold">+1</button>
                         </div>
+                    </div>
+
                     <!-- Поле комментария / заметки к подходу -->
                     <div>
                         <div class="flex items-center justify-between mb-1">
@@ -957,7 +967,7 @@
                     <div id="custom-exercise-sliders-container" class="space-y-3 max-h-56 overflow-y-auto pr-1">
                         <div
                             class="text-center py-8 text-xs text-zinc-500 italic bg-zinc-900/30 rounded-xl border border-zinc-800">
-                            Кликните на мышцу на схеме слева, чтобы добавить нагрузку.
+                            Кликните на мышцу на схеме выше (или слева), чтобы добавить нагрузку.
                         </div>
                     </div>
                 </div>
@@ -1050,7 +1060,7 @@
                             весом):</label>
                         <div class="flex gap-2">
                             <div class="relative flex-1">
-                                <input type="number" id="user-bodyweight" step="0.5" min="10" max="300" placeholder="75"
+                                <input type="number" id="user-bodyweight" step="0.5" min="10" max="300" placeholder="75" inputmode="decimal"
                                     class="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-10 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand font-mono">
                                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">кг</span>
                             </div>
@@ -1064,7 +1074,7 @@
                         <label class="block text-xs text-zinc-400">Отдых между подходами по умолчанию:</label>
                         <div class="flex gap-2">
                             <div class="relative flex-1">
-                                <input type="number" id="user-rest-duration" step="5" min="10" max="600" placeholder="90"
+                                <input type="number" id="user-rest-duration" step="5" min="10" max="600" placeholder="90" inputmode="numeric"
                                     class="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-10 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand font-mono">
                                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">сек</span>
                             </div>
@@ -1186,7 +1196,7 @@
                     <input type="date" id="bw-log-date"
                         class="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-brand">
                     <div class="relative w-24">
-                        <input type="number" id="bw-log-weight" step="0.1" min="10" max="300" placeholder="75.0"
+                        <input type="number" id="bw-log-weight" step="0.1" min="10" max="300" placeholder="75.0" inputmode="decimal"
                             class="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-8 py-2 text-xs text-zinc-200 focus:outline-none focus:border-brand font-mono">
                         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500">кг</span>
                     </div>
@@ -1207,43 +1217,43 @@
     </main>
 
     <!-- НАВИГАЦИОННАЯ ПАНЕЛЬ СНИЗУ -->
-    <nav class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 border-t border-zinc-800 backdrop-blur-md py-2 px-4">
+    <nav class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 border-t border-zinc-800 backdrop-blur-md pt-2 px-1.5 sm:px-4 safe-bottom">
         <div class="max-w-4xl mx-auto flex justify-between items-center">
 
             <button onclick="switchTab('workout')" id="nav-workout"
-                class="flex flex-col items-center gap-1 flex-1 text-brand">
-                <i data-lucide="zap" class="w-5 h-5"></i>
-                <span class="text-[10px] font-medium">Тренировка</span>
+                class="flex flex-col items-center gap-1 flex-1 min-w-0 px-0.5 text-brand transition">
+                <i data-lucide="zap" class="w-5 h-5 flex-shrink-0"></i>
+                <span class="text-[9px] sm:text-[10px] font-medium truncate max-w-full">Тренинг</span>
             </button>
 
             <button onclick="switchTab('programs')" id="nav-programs"
-                class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
-                <i data-lucide="book-open" class="w-5 h-5"></i>
-                <span class="text-[10px] font-medium">Программы</span>
+                class="flex flex-col items-center gap-1 flex-1 min-w-0 px-0.5 text-zinc-400 transition">
+                <i data-lucide="book-open" class="w-5 h-5 flex-shrink-0"></i>
+                <span class="text-[9px] sm:text-[10px] font-medium truncate max-w-full">Планы</span>
             </button>
 
             <button onclick="switchTab('stats')" id="nav-stats"
-                class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
-                <i data-lucide="radar" class="w-5 h-5"></i>
-                <span class="text-[10px] font-medium">Анатомия</span>
+                class="flex flex-col items-center gap-1 flex-1 min-w-0 px-0.5 text-zinc-400 transition">
+                <i data-lucide="radar" class="w-5 h-5 flex-shrink-0"></i>
+                <span class="text-[9px] sm:text-[10px] font-medium truncate max-w-full">Анатомия</span>
             </button>
 
             <button onclick="switchTab('progress')" id="nav-progress"
-                class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
-                <i data-lucide="trending-up" class="w-5 h-5"></i>
-                <span class="text-[10px] font-medium">Прогресс</span>
+                class="flex flex-col items-center gap-1 flex-1 min-w-0 px-0.5 text-zinc-400 transition">
+                <i data-lucide="trending-up" class="w-5 h-5 flex-shrink-0"></i>
+                <span class="text-[9px] sm:text-[10px] font-medium truncate max-w-full">Прогресс</span>
             </button>
 
             <button onclick="switchTab('exercises')" id="nav-exercises"
-                class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
-                <i data-lucide="fingerprint" class="w-5 h-5"></i>
-                <span class="text-[10px] font-medium">База</span>
+                class="flex flex-col items-center gap-1 flex-1 min-w-0 px-0.5 text-zinc-400 transition">
+                <i data-lucide="fingerprint" class="w-5 h-5 flex-shrink-0"></i>
+                <span class="text-[9px] sm:text-[10px] font-medium truncate max-w-full">База</span>
             </button>
 
             <button onclick="switchTab('settings')" id="nav-settings"
-                class="flex flex-col items-center gap-1 flex-1 text-zinc-400">
-                <i data-lucide="sliders" class="w-5 h-5"></i>
-                <span class="text-[10px] font-medium">Опции</span>
+                class="flex flex-col items-center gap-1 flex-1 min-w-0 px-0.5 text-zinc-400 transition">
+                <i data-lucide="sliders" class="w-5 h-5 flex-shrink-0"></i>
+                <span class="text-[9px] sm:text-[10px] font-medium truncate max-w-full">Опции</span>
             </button>
 
         </div>
@@ -1251,7 +1261,7 @@
 
     <!-- TOAST УВЕДОМЛЕНИЯ -->
     <div id="toast"
-        class="fixed bottom-24 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-700 text-zinc-100 text-xs px-4 py-3 rounded-xl shadow-2xl opacity-0 translate-y-2 pointer-events-none transition-all duration-300 z-[110] flex items-center gap-2 max-w-[90%]">
+        class="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-700 text-zinc-100 text-xs px-4 py-3 rounded-xl shadow-2xl opacity-0 translate-y-2 pointer-events-none transition-all duration-300 z-[110] flex items-center gap-2 max-w-[90%]">
         <i data-lucide="info" class="w-4 h-4 text-brand flex-shrink-0" id="toast-icon"></i>
         <span id="toast-message">Сообщение</span>
         <button id="toast-undo-btn" class="hidden text-brand font-bold uppercase tracking-wide text-[11px] px-2 py-1 -my-1 hover:underline flex-shrink-0">Отменить</button>
@@ -1417,6 +1427,106 @@
             <!-- Content Area (Scrollable) -->
             <div class="overflow-y-auto pr-1 flex-1 py-1 space-y-3" id="movement-picker-content">
                 <!-- Заполняется динамически: Сетка движений или Колесо снарядов -->
+            </div>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО: АВТОРИЗАЦИЯ И ОБЛАЧНАЯ СИНХРОНИЗАЦИЯ -->
+    <div id="auth-modal" onclick="if (event.target === this) closeAuthModal()"
+        class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 hidden">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-sm p-5 sm:p-6 space-y-5 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button onclick="closeAuthModal()" class="absolute top-4 right-4 sm:top-5 sm:right-5 text-zinc-400 hover:text-white p-1 rounded-lg">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+
+            <!-- Состояние: Авторизован -->
+            <div id="auth-state-logged-in" class="space-y-4 hidden">
+                <div class="flex items-center gap-3 pb-3 border-b border-zinc-800">
+                    <div class="w-12 h-12 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-brand font-bold text-lg" id="auth-avatar-letter">
+                        A
+                    </div>
+                    <div class="min-w-0">
+                        <h3 class="font-bold text-zinc-100 text-base truncate" id="auth-profile-username">Атлет</h3>
+                        <p class="text-xs text-zinc-400 truncate" id="auth-profile-email">user@example.com</p>
+                    </div>
+                </div>
+
+                <!-- Блок статуса синхронизации -->
+                <div class="bg-zinc-950/60 border border-zinc-800/80 rounded-2xl p-4 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-zinc-400">Статус облака:</span>
+                        <span id="auth-sync-status-badge" class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            Синхронизировано
+                        </span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs text-zinc-500">
+                        <span>Синхронизация:</span>
+                        <span id="auth-last-sync-time" class="text-zinc-400">Только что</span>
+                    </div>
+                </div>
+
+                <button onclick="window.triggerManualSync()" id="btn-manual-sync"
+                    class="w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-200 flex items-center justify-center gap-2">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    Синхронизировать сейчас
+                </button>
+
+                <button onclick="window.handleLogout()"
+                    class="w-full bg-zinc-800 hover:bg-zinc-700 text-red-400 font-semibold py-2.5 rounded-xl border border-zinc-700/60 transition text-xs flex items-center justify-center gap-2">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                    Выйти из аккаунта
+                </button>
+            </div>
+
+            <!-- Состояние: Гость (Вход / Регистрация) -->
+            <div id="auth-state-guest" class="space-y-4">
+                <div class="text-center space-y-1">
+                    <div class="inline-flex p-3 bg-emerald-500/10 text-brand rounded-2xl mb-1">
+                        <i data-lucide="cloud" class="w-8 h-8"></i>
+                    </div>
+                    <h3 class="font-bold text-zinc-100 text-lg">Облачный аккаунт</h3>
+                    <p class="text-xs text-zinc-400">Синхронизация между устройствами и надежное резервное копирование.</p>
+                </div>
+
+                <!-- Вкладки: Вход / Регистрация -->
+                <div class="flex bg-zinc-950 p-1 rounded-xl border border-zinc-800">
+                    <button type="button" id="tab-btn-login" onclick="switchAuthTab('login')"
+                        class="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-zinc-800 text-white transition">
+                        Вход
+                    </button>
+                    <button type="button" id="tab-btn-register" onclick="switchAuthTab('register')"
+                        class="flex-1 py-1.5 text-xs font-semibold rounded-lg text-zinc-400 hover:text-white transition">
+                        Регистрация
+                    </button>
+                </div>
+
+                <form id="auth-form" onsubmit="window.handleAuthSubmit(event)" class="space-y-3">
+                    <div id="auth-username-field" class="space-y-1 hidden">
+                        <label class="text-[11px] text-zinc-400 uppercase font-bold tracking-wider">Ваше имя</label>
+                        <input type="text" id="auth-input-username" placeholder="Александр"
+                            class="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-brand">
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-[11px] text-zinc-400 uppercase font-bold tracking-wider">Email</label>
+                        <input type="email" id="auth-input-email" required placeholder="alex@fit.ru"
+                            class="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-brand">
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-[11px] text-zinc-400 uppercase font-bold tracking-wider">Пароль</label>
+                        <input type="password" id="auth-input-password" required placeholder="Минимум 6 символов"
+                            class="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-brand">
+                    </div>
+
+                    <p id="auth-error-msg" class="text-xs text-red-400 hidden"></p>
+
+                    <button type="submit" id="auth-submit-btn"
+                        class="w-full bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl transition duration-200 flex items-center justify-center gap-2">
+                        <i data-lucide="log-in" class="w-4 h-4"></i>
+                        Войти
+                    </button>
+                </form>
             </div>
         </div>
     </div>

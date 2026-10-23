@@ -5,7 +5,9 @@ import { loadExercisesInSelect, loadAllExercisesList } from './exercises.js';
 import { buildActiveSessionUI, restoreSessionFromStorage, loadWorkoutHistory, setActiveSession, getSessionName, updatePickerModeUI } from './workout.js';
 import { getEffectiveWeight } from './core/exercise.js';
 import { renderProgressTab } from './progress.js';
+import { initAuthUI } from './auth-ui.js';
 import { createIcons, icons } from 'lucide';
+import { syncModalLock } from './modal-lock.js';
 window.lucide = { createIcons: () => createIcons({ icons }) };
 
 export let pendingConfirmResolve = null;
@@ -66,6 +68,7 @@ export function showConfirm(text) {
     const modal = document.getElementById('confirm-modal');
     if (textEl) textEl.innerText = text;
     if (modal) modal.classList.remove('hidden');
+    syncModalLock();
     return new Promise((resolve) => {
         pendingConfirmResolve = resolve;
     });
@@ -74,6 +77,7 @@ export function showConfirm(text) {
 export function closeConfirm(result) {
     const modal = document.getElementById('confirm-modal');
     if (modal) modal.classList.add('hidden');
+    syncModalLock();
     if (pendingConfirmResolve) {
         pendingConfirmResolve(result);
         pendingConfirmResolve = null;
@@ -149,10 +153,10 @@ export function importData(event) {
             const confirm = await showConfirm("Импортировать резервную копию? Текущие данные на вашем телефоне будут перезаписаны.");
             if (!confirm) return;
 
-            await db.exercises.clear();
-            await db.workoutLogs.clear();
-            await db.programs.clear();
-            await db.bodyWeightLogs.clear();
+            await db.exercises.toCollection().delete(); // не clear(): удаление должно попасть в журнал для синхронизации
+            await db.workoutLogs.toCollection().delete(); // не clear(): удаление должно попасть в журнал для синхронизации
+            await db.programs.toCollection().delete(); // не clear(): удаление должно попасть в журнал для синхронизации
+            await db.bodyWeightLogs.toCollection().delete(); // не clear(): удаление должно попасть в журнал для синхронизации
 
             if (imported.exercises && imported.exercises.length > 0) {
                 await db.exercises.bulkAdd(imported.exercises);
@@ -197,9 +201,9 @@ export async function confirmClearAll() {
 
     setActiveSession(null);
 
-    await db.workoutLogs.clear();
-    await db.exercises.clear();
-    await db.programs.clear();
+    await db.workoutLogs.toCollection().delete(); // не clear(): удаление должно попасть в журнал для синхронизации
+    await db.exercises.toCollection().delete(); // не clear(): удаление должно попасть в журнал для синхронизации
+    await db.programs.toCollection().delete(); // не clear(): удаление должно попасть в журнал для синхронизации
 
     await db.exercises.bulkAdd(DEFAULT_EXERCISES);
     await db.programs.bulkAdd(DEFAULT_PROGRAMS);
@@ -250,6 +254,7 @@ function initPWA() {
 window.addEventListener('DOMContentLoaded', async () => {
     try {
         lucide.createIcons();
+        initAuthUI();
 
         if (await db.exercises.count() === 0) {
             await db.exercises.bulkAdd(DEFAULT_EXERCISES);

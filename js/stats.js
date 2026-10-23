@@ -2,6 +2,7 @@ import Chart from 'chart.js/auto';
 import { db, getBodyWeight } from './db.js';
 import { getEffectiveWeight, getExerciseLoads } from './core/exercise.js';
 import { getRollingPeriods } from './core/periods.js';
+import { syncModalLock } from './modal-lock.js';
 export { getRollingPeriods };
 
 // Глобальная переменная текущего режима отображения статистики ('sets' или 'tonnage')
@@ -512,11 +513,13 @@ export async function showMuscleDrilldown(muscleKey) {
     }
 
     modal.classList.remove('hidden');
+    syncModalLock();
 }
 
 export function closeMuscleDrilldown() {
     const modal = document.getElementById('muscle-drilldown-modal');
     if (modal) modal.classList.add('hidden');
+    syncModalLock();
 }
 
 export function updateMuscleHeatmap(currentData) {

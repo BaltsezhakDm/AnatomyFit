@@ -1,11 +1,13 @@
 /** Training-consistency utilities — no DOM, no DB. */
 
+import { formatLocalDate, parseLocalDate } from './dates.js';
+
 function getWeekKey(dateStr) {
-    const d = new Date(dateStr + 'T00:00:00');
+    const d = parseLocalDate(dateStr);
     const day = d.getDay(); // 0=Вс..6=Сб
     const diffToMonday = (day === 0 ? -6 : 1) - day;
     d.setDate(d.getDate() + diffToMonday);
-    return d.toISOString().split('T')[0]; // понедельник этой недели
+    return formatLocalDate(d); // понедельник этой недели
 }
 
 /**
@@ -25,21 +27,21 @@ export function computeStreaks(logs) {
     let longest = 1;
     let run = 1;
     for (let i = 1; i < weekKeys.length; i++) {
-        const diffDays = Math.round((new Date(weekKeys[i]) - new Date(weekKeys[i - 1])) / 86400000);
+        const diffDays = Math.round((parseLocalDate(weekKeys[i]) - parseLocalDate(weekKeys[i - 1])) / 86400000);
         run = diffDays === 7 ? run + 1 : 1;
         longest = Math.max(longest, run);
     }
 
-    const todayKey = getWeekKey(new Date().toISOString().split('T')[0]);
-    const lastWeekDate = new Date(todayKey);
+    const todayKey = getWeekKey(formatLocalDate(new Date()));
+    const lastWeekDate = parseLocalDate(todayKey);
     lastWeekDate.setDate(lastWeekDate.getDate() - 7);
-    const lastWeekKey = lastWeekDate.toISOString().split('T')[0];
+    const lastWeekKey = formatLocalDate(lastWeekDate);
 
     let current = 0;
     if (weekKeys.includes(todayKey) || weekKeys.includes(lastWeekKey)) {
         current = 1;
         for (let i = weekKeys.length - 1; i > 0; i--) {
-            const diffDays = Math.round((new Date(weekKeys[i]) - new Date(weekKeys[i - 1])) / 86400000);
+            const diffDays = Math.round((parseLocalDate(weekKeys[i]) - parseLocalDate(weekKeys[i - 1])) / 86400000);
             if (diffDays === 7) {
                 current++;
             } else {

@@ -1,4 +1,5 @@
 import { calculate1RM, getEffectiveWeight } from './exercise.js';
+import { formatLocalDate } from './dates.js';
 
 /**
  * Calculate progression advice for a given exercise.
@@ -32,7 +33,7 @@ export function getProgressionAdvice(allLogs, exercise, bodyWeight) {
     }
 
     const dates = [...new Set(allLogs.map(l => l.date))].sort();
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = formatLocalDate();
     let lastTrainingDate = dates[dates.length - 1];
     if (lastTrainingDate === todayStr && dates.length > 1) {
         lastTrainingDate = dates[dates.length - 2];

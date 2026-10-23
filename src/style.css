@@ -85,9 +85,35 @@
   transform: scale(1.2);
 }
 
-button:focus, select:focus, input:focus, textarea:focus {
-  outline: none !important;
-  box-shadow: none !important;
+/* Safe area and mobile layout ergonomics */
+.safe-top {
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+}
+
+.safe-bottom {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+}
+
+/* Prevent unwanted viewport auto-zoom on iOS Safari when tapping inputs */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Modal open lock for mobile body */
+body.modal-open {
+  overflow: hidden !important;
+  touch-action: none;
+}
+
+/* a11y: suppress focus outline only for pointer clicks, preserve focus-visible */
+button:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
 }
 
 .muscle-path path {

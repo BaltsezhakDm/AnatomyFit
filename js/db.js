@@ -124,6 +124,170 @@ db.version(7).stores({
     }
 });
 
+export function generateUUID() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+    });
+}
+
+export const BASE_EXERCISE_UUIDS = {
+    'Жим лежа на горизонтальной скамье': '6ffe07da-21e5-494b-87e8-14eec0f12605',
+    'Подтягивания широким хватом': 'ef29d930-f71f-4ea5-8369-cb75667fbb02',
+    'Приседания со штангой': '6284e13b-b74e-4e1c-8a35-a056f79e5105',
+    'Армейский жим стоя': 'faf5c842-356d-4cab-8aa3-ae9be59ad95b',
+    'Классическая становая тяга': '92f97a66-f208-4139-8452-f7b62abf1b99',
+    'Тяга гантели к поясу в наклоне': '07c1d404-b7ad-4294-88ab-dfe2340e3ac9',
+    'Отжимания на брусьях (акцент трицепс)': 'c7761814-0d24-444c-8ceb-f70426d05856',
+    'Махи гантелей в стороны стоя': 'f6d9cbfc-e656-4fdc-8eb4-2d8105454102',
+    'Румынская тяга со штангой': '1d73519a-fcd5-451c-859c-0dcbeb0b7af6',
+    'Подъем штанги на бицепс': '46fd619c-8d53-4233-8d3b-645dee7b1527',
+    'Подъем на икры стоя': '776b6c56-ec16-40f6-826b-a0364a5a2d4a',
+    'Скручивания на пресс': '7bfb9e8a-21d9-42f8-8f35-aaad83ff942b',
+    'Ягодичный мостик со штангой': '7e4bd568-9a35-4897-83bd-7a8b506b8229',
+    'Жим сидя с гантелями': '0dc312b9-5895-4a37-8f18-8a7edc46978f',
+    'Жим от плеч в рычажном тренажере': 'bacadd0d-6871-4a41-859a-7d0da0766af7',
+    'Жим стоя в блочном кроссовере': '81a2fb79-890f-43fa-86d2-e45fc7d8b9f1',
+    'Жим над головой в тренажере Смита': 'df103d69-602a-4c40-8e4a-e8007bc08bf3',
+    'Жим гантелей на горизонтальной скамье': 'cb901b9b-5855-48ea-8c2e-39fb641dcffb',
+    'Жим от груди в рычажном тренажере': '2f2af7d4-2e56-4831-8961-3fc6e754361d',
+    'Сведение рук в блочном кроссовере': '58af8d1a-cb87-4ac6-8ee3-f5528f89edb0',
+    'Жим лежа в тренажере Смита': '691138ee-5c6a-48ba-8c7b-7ce6ac194c76',
+    'Тяга штанги к поясу в наклоне': 'd2375b8d-0bea-4c61-858a-72f011c3662e',
+    'Тяга горизонтального блока к поясу': 'f8f42aff-7baf-4a6d-8b29-3cc8bfbbede8',
+    'Тяга к поясу в рычажном тренажере': 'a83ca6c1-4851-4a39-8ded-aed339c2d569',
+    'Тяга верхнего блока к груди': '65ab01e2-f646-49ef-82bb-b9ff3beaf349',
+    'Тяга сверху в рычажном тренажере': 'a687d509-c979-4a96-8061-1c822de6b813',
+    'Жим ногами в тренажере': '8be298d1-7989-4081-8103-0dbaf9a13b85',
+    'Гакк-приседания в тренажере': '4a5f0498-6733-4d59-8d7b-fe30f4e9382a',
+    'Приседания в тренажере Смита': '21e0ad3b-7afa-4d6e-87f6-c56eed320eb7',
+    'Кубковые приседания с гантелью': '59edb0db-9a22-4e8d-8d06-136870e3227e',
+    'Махи в сторону на нижнем блоке': '4d0f80cc-bba1-4eeb-8b92-3e7bd9070878',
+    'Махи в рычажном тренажере': '6e67d37b-f9a3-454b-8e38-4f2a06ecbf8c',
+    'Подъем гантелей на бицепс с супинацией': 'e1a63a94-a947-4403-8760-958c47554797',
+    'Сгибания на бицепс на нижнем блоке': 'f5d8ebfd-7d5b-4316-8cb2-a6880bcae964',
+    'Сгибания в тренажере на парте Скотта': '16f1ce2e-864d-461e-824c-0fecd80827b7',
+    'Разгибания на верхнем блоке с канатом': '610f379e-75ab-4eae-80a9-06a3e8b8e37c',
+    'Французский жим со штангой лежа': '5b0de566-0032-488c-8fa7-8f3760275782',
+    'Разгибания с гантелью из-за головы': 'da40c834-ddbd-40ba-8e49-ec620411299d',
+    'Румынская тяга с гантелями': '1ed47489-5796-490b-8305-badc997341e7',
+    'Сгибания ног в тренажере лежа': '85bc515c-e2c3-490d-8022-b997c528c834',
+    'Скручивания на верхнем блоке (Молитва)': '8362325f-59e8-4d68-80bb-899b32d79ff7',
+    'Ягодичный мостик в тренажере': '65d352a3-f666-4273-8bc8-1a88189807ed',
+    'Подъем на икры в тренажере сидя': 'ee7acadb-5467-4ea2-8aed-97688495aad5'
+};
+
+// Версия 8: Индексация UUID и полей синхронизации для Offline-First
+db.version(8).stores({
+    exercises: '++id, uuid, name, isCustom, primaryMuscle, secondaryMuscle, secondaryCoeff, tertiaryMuscle, tertiaryCoeff, usesBodyweight, muscleLoads, movementPattern, equipment, updatedAt, deletedAt',
+    workoutLogs: '++id, uuid, date, exerciseId, weight, reps, sessionId, comment, updatedAt, deletedAt',
+    programs: '++id, uuid, name, exerciseIds, updatedAt, deletedAt',
+    bodyWeightLogs: '++id, uuid, date, weight, updatedAt, deletedAt'
+}).upgrade(async tx => {
+    const now = Date.now();
+    await tx.exercises.toCollection().modify(ex => {
+        if (!ex.uuid) ex.uuid = BASE_EXERCISE_UUIDS[ex.name] || generateUUID();
+        if (!ex.updatedAt) ex.updatedAt = now;
+    });
+    await tx.workoutLogs.toCollection().modify(log => {
+        if (!log.uuid) log.uuid = generateUUID();
+        if (!log.updatedAt) log.updatedAt = now;
+    });
+    await tx.programs.toCollection().modify(prog => {
+        if (!prog.uuid) prog.uuid = generateUUID();
+        if (!prog.updatedAt) prog.updatedAt = now;
+    });
+    await tx.bodyWeightLogs.toCollection().modify(bw => {
+        if (!bw.uuid) bw.uuid = generateUUID();
+        if (!bw.updatedAt) bw.updatedAt = now;
+    });
+});
+
+export { formatLocalDate as getLocalDateString } from './core/dates.js';
+
+// Версия 9: журнал локальных удалений (tombstones) для синхронизации удалений на сервер
+db.version(9).stores({
+    tombstones: '++id, table, uuid, deletedAt'
+});
+
+let remoteChangeDepth = 0;
+
+/** Изменения, пришедшие с сервера, не должны порождать tombstones (иначе удаление вернётся обратно на сервер). */
+export async function withRemoteChanges(fn) {
+    remoteChangeDepth++;
+    try {
+        return await fn();
+    } finally {
+        remoteChangeDepth--;
+    }
+}
+
+function trackDeletions(table, tableName) {
+    table.hook('deleting', function (primKey, obj) {
+        if (remoteChangeDepth > 0 || !obj || !obj.uuid) return;
+        const entry = { table: tableName, uuid: obj.uuid, deletedAt: Date.now(), snapshot: obj };
+        // Запись в другую таблицу — вне транзакции удаления, после её успешного завершения
+        this.onsuccess = () => {
+            Dexie.ignoreTransaction(() => db.tombstones.add(entry)).catch(e => console.warn('Не удалось записать tombstone', e));
+        };
+    });
+}
+
+trackDeletions(db.exercises, 'exercises');
+trackDeletions(db.workoutLogs, 'workoutLogs');
+trackDeletions(db.programs, 'programs');
+trackDeletions(db.bodyWeightLogs, 'bodyWeightLogs');
+
+// Dexie Hooks: Автоматическое присвоение UUID и updatedAt при любых созданиях/обновлениях
+db.workoutLogs.hook('creating', function (primKey, obj) {
+    if (!obj.uuid) obj.uuid = generateUUID();
+    if (!obj.updatedAt) obj.updatedAt = Date.now();
+});
+db.workoutLogs.hook('updating', function (modifications) {
+    return {
+        ...modifications,
+        updatedAt: modifications.updatedAt !== undefined ? modifications.updatedAt : Date.now()
+    };
+});
+
+db.exercises.hook('creating', function (primKey, obj) {
+    if (!obj.uuid) obj.uuid = BASE_EXERCISE_UUIDS[obj.name] || generateUUID();
+    if (!obj.updatedAt) obj.updatedAt = Date.now();
+});
+db.exercises.hook('updating', function (modifications) {
+    return {
+        ...modifications,
+        updatedAt: modifications.updatedAt !== undefined ? modifications.updatedAt : Date.now()
+    };
+});
+
+db.programs.hook('creating', function (primKey, obj) {
+    if (!obj.uuid) obj.uuid = generateUUID();
+    if (!obj.updatedAt) obj.updatedAt = Date.now();
+});
+db.programs.hook('updating', function (modifications) {
+    return {
+        ...modifications,
+        updatedAt: modifications.updatedAt !== undefined ? modifications.updatedAt : Date.now()
+    };
+});
+
+db.bodyWeightLogs.hook('creating', function (primKey, obj) {
+    if (!obj.uuid) obj.uuid = generateUUID();
+    if (!obj.updatedAt) obj.updatedAt = Date.now();
+});
+db.bodyWeightLogs.hook('updating', function (modifications) {
+    return {
+        ...modifications,
+        updatedAt: modifications.updatedAt !== undefined ? modifications.updatedAt : Date.now()
+    };
+});
+
+
 export const EQUIPMENT_INFO = {
     barbell: { id: 'barbell', name: 'Со штангой', icon: 'dumbbell', short: 'Штанга' },
     dumbbell: { id: 'dumbbell', name: 'С гантелями', icon: 'dumbbell', short: 'Гантели' },

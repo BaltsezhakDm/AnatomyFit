@@ -1,13 +1,29 @@
-import { db, getBodyWeight, getRestDuration, EQUIPMENT_INFO, MOVEMENT_PATTERNS } from './db.js';
+import { db, getBodyWeight, getRestDuration, EQUIPMENT_INFO, MOVEMENT_PATTERNS, getLocalDateString } from './db.js';
 import { updateStatistics, MUSCLE_NAMES } from './stats.js';
 import { getEffectiveWeight, calculate1RM } from './core/exercise.js';
 import { getProgressionAdvice } from './core/progression.js';
 import { getBest1RM } from './core/records.js';
 import { showToast, showConfirm, switchTab } from './ui.js';
+import { syncModalLock } from './modal-lock.js';
+import { parseLocalDate } from './core/dates.js';
 
 export let activeSession = null;
 export let currentPickerMode = localStorage.getItem('anatomyfit_exercise_view_mode') || 'classic';
 export let selectedMovementPatternId = null;
+
+let audioCtxInstance = null;
+export function unlockAudioContext() {
+    try {
+        if (!audioCtxInstance && (window.AudioContext || window.webkitAudioContext)) {
+            audioCtxInstance = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtxInstance && audioCtxInstance.state === 'suspended') {
+            audioCtxInstance.resume().catch(() => {});
+        }
+    } catch (e) {
+        console.warn("Audio unlock warning:", e);
+    }
+}
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -361,7 +377,8 @@ export async function saveActiveSet() {
         return;
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    unlockAudioContext();
+    const todayStr = getLocalDateString();
     const sessionId = activeSession ? activeSession.sessionId : Date.now();
 
     // Запоминаем рекорд ДО записи нового подхода, чтобы понять, побит ли он
@@ -419,6 +436,7 @@ export function startRestTimer(seconds = 90, updateStorage = true) {
     clearInterval(timerInterval);
     timerSecondsLeft = seconds;
     timerIsPaused = false;
+    unlockAudioContext();
 
     const card = document.getElementById('rest-timer-card');
     if (card) card.classList.remove('hidden');
@@ -533,7 +551,8 @@ export function triggerTimerAlarm() {
     }
 
     try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        unlockAudioContext();
+        const audioCtx = audioCtxInstance || new (window.AudioContext || window.webkitAudioContext)();
         const playBeep = (time, freq) => {
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
@@ -606,7 +625,7 @@ export async function loadTodayLogs() {
     const container = document.getElementById('today-logs-container');
     if (!container) return;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
     let logs;
     if (activeSession && activeSession.sessionId) {
         logs = await db.workoutLogs.where('sessionId').equals(activeSession.sessionId).toArray();
@@ -781,7 +800,7 @@ export async function loadWorkoutHistory() {
         const sessionExerciseIds = [...new Set(session.logs.map(l => l.exerciseId))];
         const sessionName = getSessionName(sessionExerciseIds, programs);
 
-        const dateObj = new Date(session.date);
+        const dateObj = parseLocalDate(session.date);
         const formattedDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
 
         const setCount = session.logs.length;
@@ -921,12 +940,14 @@ export async function showWorkoutDetails(sessionId, date) {
     }).join('');
 
     modal.classList.remove('hidden');
+    syncModalLock();
     lucide.createIcons();
 }
 
 export function closeWorkoutDetails() {
     const modal = document.getElementById('workout-details-modal');
     if (modal) modal.classList.add('hidden');
+    syncModalLock();
     selectedHistorySessionId = null;
     selectedHistoryDate = null;
     isEditingWorkoutSession = false;
@@ -1034,15 +1055,15 @@ export async function renderWorkoutDetailsEditMode() {
                     <div class="flex items-center gap-1.5">
                         <span class="text-[10px] font-mono text-zinc-500 w-4 text-center">${index + 1}:</span>
                         <div class="flex items-center gap-0.5 flex-1 min-w-0">
-                            <input type="number" step="0.5" 
-                                   class="edit-set-weight w-16 bg-zinc-950 border border-zinc-800 rounded px-1 py-0.5 text-xs text-center font-mono text-zinc-200 focus:outline-none focus:border-brand" 
+                            <input type="number" step="0.5" inputmode="decimal"
+                                   class="edit-set-weight w-16 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-center font-mono text-zinc-200 focus:outline-none focus:border-brand" 
                                    value="${weightVal}" 
                                    oninput="window.updateEditingSetWeight(${log._arrayIndex}, this.value)">
                             <span class="text-[9px] text-zinc-500">${ex.usesBodyweight ? 'св' : 'кг'}</span>
                         </div>
                         <div class="flex items-center gap-0.5 flex-1 min-w-0">
-                            <input type="number" 
-                                   class="edit-set-reps w-12 bg-zinc-950 border border-zinc-800 rounded px-1 py-0.5 text-xs text-center font-mono text-zinc-200 focus:outline-none focus:border-brand" 
+                            <input type="number" inputmode="numeric"
+                                   class="edit-set-reps w-12 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-center font-mono text-zinc-200 focus:outline-none focus:border-brand" 
                                    value="${repsVal}" 
                                    oninput="window.updateEditingSetReps(${log._arrayIndex}, this.value)">
                             <span class="text-[9px] text-zinc-500">раз</span>
@@ -1227,12 +1248,14 @@ export async function openSwapExerciseModal(oldExerciseId) {
 
     const modal = document.getElementById('swap-exercise-modal');
     if (modal) modal.classList.remove('hidden');
+    syncModalLock();
 }
 
 export function closeSwapExerciseModal() {
     swapTargetExerciseId = null;
     const modal = document.getElementById('swap-exercise-modal');
     if (modal) modal.classList.add('hidden');
+    syncModalLock();
 }
 
 export async function renderSwapExerciseList() {
@@ -1393,12 +1416,14 @@ export async function openMovementPickerModal() {
     await renderMovementPatterns();
 
     if (modal) modal.classList.remove('hidden');
+    syncModalLock();
     lucide.createIcons();
 }
 
 export function closeMovementPickerModal() {
     const modal = document.getElementById('movement-picker-modal');
     if (modal) modal.classList.add('hidden');
+    syncModalLock();
     selectedMovementPatternId = null;
 }
 
