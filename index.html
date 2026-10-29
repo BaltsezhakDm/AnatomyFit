@@ -334,10 +334,15 @@
                         <i data-lucide="book-open" class="w-4 h-4 text-brand"></i>
                         Твои программы тренировок
                     </h3>
-                    <button id="btn-toggle-program-form" onclick="window.openProgramForm()"
-                        class="text-xs font-bold text-brand hover:text-brand-dark flex items-center gap-1 px-2 py-1">
-                        <i data-lucide="plus" class="w-3.5 h-3.5"></i> Создать программу
-                    </button>
+                    <div class="flex items-center gap-1">
+                        <button onclick="openCatalog('programs')" class="text-xs font-bold text-zinc-400 hover:text-brand flex items-center gap-1 px-2 py-1">
+                            <i data-lucide="library" class="w-3.5 h-3.5"></i> Каталог
+                        </button>
+                        <button id="btn-toggle-program-form" onclick="window.openProgramForm()"
+                            class="text-xs font-bold text-brand hover:text-brand-dark flex items-center gap-1 px-2 py-1">
+                            <i data-lucide="plus" class="w-3.5 h-3.5"></i> Создать программу
+                        </button>
+                    </div>
                 </div>
                 <div id="programs-list-container" class="space-y-3">
                     <!-- Заполняется динамически -->
@@ -362,6 +367,11 @@
                         <input type="text" id="program-name-input" placeholder="Например: Сплит День А (Грудь/Спина)"
                             class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-brand">
                     </div>
+
+                    <label class="flex items-start gap-2 text-xs text-zinc-300 cursor-pointer">
+                        <input type="checkbox" id="program-public" checked class="mt-0.5">
+                        <span><strong>Общая программа</strong> — шаблон (упражнения и подходы) виден всем в каталоге. Неделя цикла и история остаются личными. Снимите галочку для личной.</span>
+                    </label>
 
                     <div>
                         <label class="block text-xs text-zinc-400 mb-1">Тренировок по этой программе в неделю</label>
@@ -739,7 +749,10 @@
         <!-- ВКЛАДКА 4: БАЗА УПРАЖНЕНИЙ С СИНЕРГИЕЙ -->
         <section id="tab-exercises" class="space-y-6 hidden">
             <!-- Переключатель конструктора -->
-            <div class="flex items-center justify-end -mb-2">
+            <div class="flex items-center justify-end gap-1 -mb-2">
+                <button onclick="openCatalog('exercises')" class="text-xs font-bold text-zinc-400 hover:text-brand flex items-center gap-1 px-2 py-1">
+                    <i data-lucide="library" class="w-3.5 h-3.5"></i> Каталог
+                </button>
                 <button id="btn-toggle-exercise-form" onclick="window.openExerciseForm()"
                     class="text-xs font-bold text-brand hover:text-brand-dark flex items-center gap-1 px-2 py-1">
                     <i data-lucide="plus" class="w-3.5 h-3.5"></i> Новое упражнение
@@ -1039,6 +1052,12 @@
                 </div>
             </div>
             </div>
+
+            <!-- Видимость: общее по умолчанию -->
+            <label class="flex items-start gap-2 text-xs text-zinc-300 cursor-pointer">
+                <input type="checkbox" id="custom-exercise-public" checked class="mt-0.5">
+                <span><strong>Общее</strong> — видно всем в каталоге (изменять его можете только вы). Снимите галочку, чтобы упражнение было личным.</span>
+            </label>
 
             <!-- КНОПКИ ДЕЙСТВИЯ -->
             <div class="flex gap-3 pt-2">
@@ -1528,6 +1547,29 @@
         <div class="flex gap-2">
             <button onclick="deleteViewedPhoto()" class="px-4 py-2 rounded-xl bg-red-500/15 text-red-300 border border-red-500/25 text-sm font-semibold">Удалить фото</button>
             <button onclick="closePhotoViewer()" class="px-4 py-2 rounded-xl bg-zinc-900 text-zinc-200 border border-zinc-700 text-sm font-semibold">Закрыть</button>
+        </div>
+    </div>
+
+    <!-- Каталог общих упражнений и программ -->
+    <div id="catalog-modal" onclick="if (event.target === this) closeCatalog()"
+        class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-zinc-950 border border-zinc-800 rounded-t-3xl sm:rounded-3xl w-full max-w-md h-[88vh] flex flex-col p-5 space-y-3">
+            <div class="flex items-center justify-between flex-shrink-0">
+                <h3 class="font-bold text-zinc-100 text-base flex items-center gap-2">
+                    <i data-lucide="library" class="w-5 h-5 text-brand"></i> Каталог общих
+                </h3>
+                <button onclick="closeCatalog()" class="text-zinc-400 hover:text-zinc-200 p-1" aria-label="Закрыть">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="bg-zinc-900 p-1 rounded-xl border border-zinc-800 flex flex-shrink-0">
+                <button id="catalog-tab-exercises" onclick="setCatalogTab('exercises')" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all">Упражнения</button>
+                <button id="catalog-tab-programs" onclick="setCatalogTab('programs')" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all">Программы</button>
+            </div>
+            <input type="search" id="catalog-search" oninput="searchCatalog()" placeholder="Поиск..."
+                class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-brand flex-shrink-0">
+            <div id="catalog-list" class="overflow-y-auto flex-1 space-y-2 pr-1"></div>
+            <p class="text-[10px] text-zinc-600 flex-shrink-0">Здесь упражнения и программы, которыми поделились другие пользователи. Чужое можно добавить к себе; личное состояние (неделя цикла, история) у каждого своё.</p>
         </div>
     </div>
 

@@ -61,6 +61,7 @@ const rowSchemas = {
     muscleLoads: z.unknown().optional(),
     instructions: text,
     isFavorite: z.unknown().optional(),
+    isPublic: z.boolean().nullish(),
     updatedAt: timestamp,
     deletedAt: timestamp,
   }),
@@ -68,7 +69,7 @@ const rowSchemas = {
     id,
     name: z.string().min(1).max(200),
     description: text,
-    isPublic: z.unknown().optional(),
+    isPublic: z.boolean().nullish(),
     exerciseIds: z.array(id).max(500).nullish(),
     plan: planSchema.nullish(),
     updatedAt: timestamp,
@@ -181,6 +182,9 @@ const bodySchema = z.object({
     .optional(),
 });
 
+/** Видимость для SQL: true/false -> 1/0, не передана -> null (при создании «общее», при обновлении без изменений). */
+const visibility = (value: boolean | null | undefined): number | null => (value === undefined || value === null ? null : value ? 1 : 0);
+
 export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   app.post('/delta', { preHandler: [authenticate] }, async (request, reply) => {
     const tokenPayload = request.user as { userId: string };
@@ -208,9 +212,18 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     `).pluck();
     const ownsSession = sqlite.prepare('SELECT 1 FROM workout_sessions WHERE id = ? AND user_id = ?').pluck();
     const ownsMachine = sqlite.prepare('SELECT 1 FROM machines WHERE id = ? AND user_id = ?').pluck();
-    const canUseExercise = sqlite.prepare(
-      'SELECT 1 FROM exercises WHERE id = ? AND (user_id IS NULL OR user_id = ?)'
-    ).pluck();
+    // Упражнение доступно: системное, своё, общее (опубликованное автором) или уже используемое пользователем —
+    // последнее нужно, чтобы снятие с публикации или удаление автором не ломало синхронизацию тех, кто его добавил
+    const canUseExerciseStmt = sqlite.prepare(`
+      SELECT 1 FROM exercises e WHERE e.id = @id AND (
+        e.user_id IS NULL
+        OR e.user_id = @user
+        OR (e.is_public = 1 AND e.deleted_at IS NULL)
+        OR EXISTS (SELECT 1 FROM workout_sets ws WHERE ws.user_id = @user AND ws.exercise_id = e.id)
+        OR EXISTS (SELECT 1 FROM machines m WHERE m.user_id = @user AND m.exercise_id = e.id)
+      )
+    `).pluck();
+    const canUseExercise = { get: (exerciseId: string, user: string) => canUseExerciseStmt.get({ id: exerciseId, user }) };
 
     /** Валидирует строку и применяет её; ошибка одной строки не валит весь батч. */
     const applyRows = <T extends PushTable>(
@@ -242,9 +255,10 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         INSERT INTO exercises (
           id, user_id, name, category, movement_pattern, equipment,
           uses_bodyweight, is_custom, muscle_loads, instructions,
-          is_favorite, updated_at, synced_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+          is_favorite, is_public, updated_at, synced_at, deleted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, COALESCE(?, 1), ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
+          is_public = COALESCE(?, exercises.is_public), -- клиент без поддержки видимости её не сбрасывает
           name = excluded.name,
           category = excluded.category,
           movement_pattern = excluded.movement_pattern,
@@ -273,9 +287,11 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
           loads,
           ex.instructions || null,
           ex.isFavorite ? 1 : 0,
+          visibility(ex.isPublic),
           ex.updatedAt || serverTimestamp,
           serverTimestamp,
           ex.deletedAt || null,
+          visibility(ex.isPublic),
           userId
         );
       });
@@ -283,11 +299,11 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       // Б. Программы
       const upsertProgram = sqlite.prepare(`
         INSERT INTO programs (id, user_id, name, description, is_public, exercise_ids, plan, updated_at, synced_at, deleted_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, COALESCE(?, 1), ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
           description = excluded.description,
-          is_public = excluded.is_public,
+          is_public = COALESCE(?, programs.is_public), -- клиент без поддержки видимости её не сбрасывает
           exercise_ids = excluded.exercise_ids,
           plan = COALESCE(excluded.plan, programs.plan), -- клиенты без поддержки плана не затирают его
           updated_at = excluded.updated_at,
@@ -301,12 +317,13 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
           userId,
           p.name,
           p.description || null,
-          p.isPublic ? 1 : 0,
+          visibility(p.isPublic),
           p.exerciseIds ? JSON.stringify(p.exerciseIds) : null,
           p.plan ? JSON.stringify(p.plan) : null,
           p.updatedAt || serverTimestamp,
           serverTimestamp,
           p.deletedAt || null,
+          visibility(p.isPublic),
           userId
         );
       });

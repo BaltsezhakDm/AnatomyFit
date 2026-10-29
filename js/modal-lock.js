@@ -9,6 +9,7 @@ const MODAL_IDS = [
     'machine-modal',
     'readiness-modal',
     'photo-viewer-modal',
+    'catalog-modal',
 ];
 
 /**

@@ -63,15 +63,18 @@ export async function collectPush(pushCursor) {
     equipment: ex.equipment || 'barbell',
     usesBodyweight: ex.usesBodyweight || 0,
     muscleLoads: ex.muscleLoads || {},
+    // Видимость отправляется только когда выбрана явно: для старых записей сервер оставляет прежнее значение (по умолчанию — общее)
+    ...(ex.isPublic === undefined || ex.isPublic === null ? {} : { isPublic: !!ex.isPublic }),
     updatedAt: deletedAt || ex.updatedAt || Date.now(),
     deletedAt,
   });
 
+  // Упражнения, добавленные из каталога (ownerName), принадлежат другому пользователю и на сервер не отправляются
   for (const ex of exercises) {
-    if (ex.isCustom && isChangedSince(ex, pushCursor)) push.exercises.push(exercisePayload({ ...ex, uuid: idToUuid.get(ex.id) }));
+    if (ex.isCustom && !ex.ownerName && isChangedSince(ex, pushCursor)) push.exercises.push(exercisePayload({ ...ex, uuid: idToUuid.get(ex.id) }));
   }
   for (const t of deletedOf('exercises')) {
-    if (t.snapshot?.isCustom) push.exercises.push(exercisePayload(t.snapshot, t.deletedAt));
+    if (t.snapshot?.isCustom && !t.snapshot.ownerName) push.exercises.push(exercisePayload(t.snapshot, t.deletedAt));
   }
 
   const programs = await db.programs.toArray();
@@ -169,10 +172,12 @@ export async function applyPull(pull) {
           equipment: ex.equipment || 'barbell',
           usesBodyweight: ex.usesBodyweight ? 1 : 0,
           muscleLoads: loads,
+          isPublic: ex.isPublic === undefined ? undefined : !!ex.isPublic,
           updatedAt: ex.updatedAt,
         };
+        if (fields.isPublic === undefined) delete fields.isPublic;
         if (local) {
-          if (local.isCustom && shouldApplyRemote(local, ex.updatedAt)) await db.exercises.update(local.id, fields);
+          if (local.isCustom && !local.ownerName && shouldApplyRemote(local, ex.updatedAt)) await db.exercises.update(local.id, fields);
         } else {
           await db.exercises.add({ uuid: ex.id, isCustom: ex.userId || ex.isCustom ? 1 : 0, ...fields });
         }
@@ -225,6 +230,7 @@ export async function applyPull(pull) {
         // План (слоты, неделя цикла) приходит вместе с программой; без него локальные настройки не трогаем
         const plan = resolvePlan(p.plan, uuidToId);
         deferred += unknown + (plan ? plan.unknown : 0);
+        const visibilityFields = p.isPublic === undefined || p.isPublic === null ? {} : { isPublic: !!p.isPublic };
         const planFields = plan
           ? {
               slots: plan.slots,
@@ -235,10 +241,10 @@ export async function applyPull(pull) {
           : {};
         if (local) {
           if (shouldApplyRemote(local, p.updatedAt)) {
-            await db.programs.update(local.id, { name: p.name, exerciseIds: ids, ...planFields, updatedAt: p.updatedAt });
+            await db.programs.update(local.id, { name: p.name, exerciseIds: ids, ...planFields, ...visibilityFields, updatedAt: p.updatedAt });
           }
         } else {
-          await db.programs.add({ uuid: p.id, name: p.name, exerciseIds: ids, ...planFields, updatedAt: p.updatedAt });
+          await db.programs.add({ uuid: p.id, name: p.name, exerciseIds: ids, ...planFields, ...visibilityFields, updatedAt: p.updatedAt });
         }
       }
 

@@ -6,6 +6,7 @@ import { buildActiveSessionUI, restoreSessionFromStorage, loadWorkoutHistory, se
 import { getEffectiveWeight } from './core/exercise.js';
 import { renderProgressTab } from './progress.js';
 import { initAuthUI } from './auth-ui.js';
+import './catalog-ui.js';
 import { createIcons, icons } from 'lucide';
 import { syncModalLock } from './modal-lock.js';
 window.lucide = { createIcons: () => createIcons({ icons }) };

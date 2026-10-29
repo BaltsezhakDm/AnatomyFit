@@ -14,7 +14,7 @@ async function setup() {
   const bob = await t.register('bob');
   const programId = uuid(), dayId = uuid(), sessionId = uuid(), exId = uuid();
   const res = await t.sync(alice, {
-    exercises: [{ id: exId, name: 'Alice curl', muscleLoads: { biceps: 1 }, updatedAt: 1000 }],
+    exercises: [{ id: exId, name: 'Alice curl', muscleLoads: { biceps: 1 }, isPublic: false, updatedAt: 1000 }], // личное: чужим недоступно
     programs: [{ id: programId, name: 'Alice program', updatedAt: 1000 }],
     programDays: [{ id: dayId, programId, name: 'Alice day', updatedAt: 1000 }],
     workoutSessions: [{ id: sessionId, name: 'Alice session', updatedAt: 1000 }],

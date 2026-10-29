@@ -29,6 +29,7 @@ test('прод на второй миграции (журнал 0000+0001) пр�
   sqlite.prepare(
     "INSERT INTO exercises (id, user_id, name, category, movement_pattern, equipment, uses_bodyweight, is_custom, muscle_loads, is_favorite, updated_at, synced_at) VALUES ('e1', 'u1', 'E', 'strength', 'other', 'barbell', 0, 1, '{}', 0, 1, 1)"
   ).run();
+  sqlite.prepare("INSERT INTO programs (id, user_id, name, is_public, updated_at, synced_at) VALUES ('p1', 'u1', 'Старая программа', 0, 1, 1)").run();
   sqlite.prepare("INSERT INTO workout_sessions (id, user_id, name, session_type, started_at, updated_at, synced_at) VALUES ('s1', 'u1', 'n', 'free', 1, 1, 1)").run();
   sqlite.prepare(
     "INSERT INTO workout_sets (id, user_id, session_id, exercise_id, set_order, set_type, weight, reps, log_date, completed_at, updated_at, synced_at) VALUES ('w1', 'u1', 's1', 'e1', 1, 'normal', 50, 8, '2026-01-01', 1, 1, 1)"
@@ -41,7 +42,10 @@ test('прод на второй миграции (журнал 0000+0001) пр�
   assert.ok(columns.includes('machine_id'));
   const sessionColumns = (sqlite.prepare('PRAGMA table_info(workout_sessions)').all() as { name: string }[]).map(c => c.name);
   for (const column of ['readiness_pre', 'feeling_post', 'pre_tags']) assert.ok(sessionColumns.includes(column), column);
-  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 4);
+  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 5);
+  // Решение владельца: по умолчанию всё общее — существующие упражнения и программы попадают в каталог
+  assert.equal((sqlite.prepare("SELECT is_public AS p FROM programs WHERE id = 'p1'").get() as { p: number }).p, 1);
+  assert.equal((sqlite.prepare("SELECT is_public AS p FROM exercises WHERE id = 'e1'").get() as { p: number }).p, 1);
   const set = sqlite.prepare("SELECT weight, machine_id FROM workout_sets WHERE id = 'w1'").get() as { weight: number; machine_id: string | null };
   assert.deepEqual([set.weight, set.machine_id], [50, null], 'старые подходы без тренажёра сохранились');
 });

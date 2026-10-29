@@ -29,6 +29,13 @@
       "when": 1793274922311,
       "tag": "0003_curly_bloodstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793276250507,
+      "tag": "0004_low_winter_soldier",
+      "breakpoints": true
     }
   ]
 }

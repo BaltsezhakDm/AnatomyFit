@@ -333,3 +333,56 @@ test('pull: самочувствие с другого устройства пр
     await applyPull({ workoutSessions: [{ id: sessionUuidFromLocalId(1792787999999), name: 'Тренировка', updatedAt: 1 }] });
     assert.equal(await db.sessionMeta.count(), before, 'сессия без оценок метаданных не создаёт');
 });
+
+// ---------- общие и личные ----------
+
+test('упражнения из каталога (ownerName) на сервер не отправляются — ни изменения, ни удаление', async () => {
+    const mine = await seedExercise({ name: 'Моё' });
+    const foreign = await seedExercise({ name: 'Чужое (alice)', ownerName: 'alice' });
+    const { push } = await collectPush(0);
+    assert.deepEqual(push.exercises.map(e => e.id), [mine.uuid]);
+
+    await db.exercises.delete(foreign.id);
+    await tick();
+    const after = await collectPush(Number.MAX_SAFE_INTEGER);
+    assert.ok(!after.push.exercises.some(e => e.id === foreign.uuid), 'удаление чужого — только локальное');
+});
+
+test('видимость упражнения и программы отправляется только когда выбрана явно', async () => {
+    const withDefault = await seedExercise({ name: 'По умолчанию' });
+    const personal = await seedExercise({ name: 'Личное', isPublic: false });
+    const shared = await seedExercise({ name: 'Общее', isPublic: true });
+    const { push } = await collectPush(0);
+    const byId = Object.fromEntries(push.exercises.map(e => [e.id, e]));
+    assert.equal('isPublic' in byId[withDefault.uuid], false);
+    assert.equal(byId[personal.uuid].isPublic, false);
+    assert.equal(byId[shared.uuid].isPublic, true);
+
+    const a = await db.programs.add({ name: 'A', exerciseIds: [] });
+    const b = await db.programs.add({ name: 'B', exerciseIds: [], isPublic: false });
+    const sent = (await collectPush(0)).push.programs;
+    const [uuidA, uuidB] = [(await db.programs.get(a)).uuid, (await db.programs.get(b)).uuid];
+    assert.equal('isPublic' in sent.find(p => p.id === uuidA), false);
+    assert.equal(sent.find(p => p.id === uuidB).isPublic, false);
+});
+
+test('pull: видимость своих упражнений и программ сохраняется локально; чужие записи не трогаются', async () => {
+    const own = await seedExercise({ name: 'Моё' });
+    const foreign = await seedExercise({ name: 'Чужое', ownerName: 'alice', muscleLoads: { chest: 1 } });
+    const pid = await db.programs.add({ name: 'Prog', exerciseIds: [] });
+    const program = await db.programs.get(pid);
+
+    await applyPull({
+        exercises: [
+            { id: own.uuid, name: 'Моё', muscleLoads: { chest: 1 }, isPublic: 0, userId: 'me', updatedAt: own.updatedAt + 1000 },
+            { id: foreign.uuid, name: 'ПЕРЕЗАПИСАНО', muscleLoads: { back: 1 }, isPublic: 1, userId: 'alice-id', updatedAt: foreign.updatedAt + 1000 },
+        ],
+        programs: [{ id: program.uuid, name: 'Prog', exerciseIds: [], isPublic: 0, updatedAt: program.updatedAt + 1000 }],
+    });
+    assert.equal((await db.exercises.get(own.id)).isPublic, false);
+    assert.equal((await db.exercises.get(foreign.id)).name, 'Чужое', 'чужое упражнение не перезаписывается');
+    assert.equal((await db.programs.get(pid)).isPublic, false);
+
+    await applyPull({ programs: [{ id: program.uuid, name: 'Prog', exerciseIds: [], isPublic: 1, updatedAt: program.updatedAt + 2000 }] });
+    assert.equal((await db.programs.get(pid)).isPublic, true);
+});

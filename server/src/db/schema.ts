@@ -56,6 +56,7 @@ export const exercises = sqliteTable('exercises', {
   muscleLoads: text('muscle_loads').notNull(), // JSON: {"chest": 0.5, "front_delts": 0.3, "triceps": 0.2}
   instructions: text('instructions'),
   isFavorite: integer('is_favorite').default(0).notNull(),
+  isPublic: integer('is_public').default(1).notNull(), // 1 — общее (видно всем в каталоге), 0 — личное
   updatedAt: integer('updated_at').notNull(),
   // Серверное время последнего применения изменения: курсор для pull, не зависит от часов клиентов
   syncedAt: integer('synced_at').default(0).notNull(),

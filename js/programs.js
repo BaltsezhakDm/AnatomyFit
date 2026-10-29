@@ -56,6 +56,12 @@ export async function loadRoutinesInSelectors() {
                 .map(id => `${escapeHtml(exerciseMap[id]?.name || 'Упражнение')}${slotInfo[id] ? ` <span class="text-zinc-500">${slotSummary(slotInfo[id])}</span>` : ''}`)
                 .join(', ');
             const cycle = r.cycle;
+            const visibilityBadge = r.isPublic === false
+                ? '<span class="text-[9px] font-bold text-zinc-400 bg-zinc-800 border border-zinc-700/50 rounded-md px-1.5 py-0.5 whitespace-nowrap">личная</span>'
+                : '<span class="text-[9px] font-bold text-brand bg-brand/10 border border-brand/20 rounded-md px-1.5 py-0.5 whitespace-nowrap">общая</span>';
+            const copiedNote = r.copiedFrom?.authorName
+                ? `<p class="text-[10px] text-sky-300/80 mt-0.5">из каталога · автор ${escapeHtml(r.copiedFrom.authorName)}</p>`
+                : '';
             const cycleBadge = cycle
                 ? `<span class="text-[9px] font-bold text-brand bg-brand/10 border border-brand/20 rounded-md px-1.5 py-0.5 whitespace-nowrap">Мезоцикл ${cycle.index + 1} · нед. ${cycle.week}/${cycle.weeks}</span>`
                 : '';
@@ -64,8 +70,9 @@ export async function loadRoutinesInSelectors() {
                     <div>
                         <div class="flex items-start justify-between gap-2">
                             <h4 class="font-bold text-zinc-100 text-sm">${escapeHtml(r.name)}</h4>
-                            ${cycleBadge}
+                            <div class="flex flex-col items-end gap-1">${cycleBadge}${visibilityBadge}</div>
                         </div>
+                        ${copiedNote}
                         <p class="text-[10px] text-zinc-400 leading-normal mt-1"><strong>Упражнения:</strong> ${exNames}</p>
                     </div>
                     <div class="flex gap-2">
@@ -223,6 +230,8 @@ export async function createNewProgram() {
     const sessionsInput = document.getElementById('program-sessions-per-week');
     const sessionsPerWeek = Math.min(7, Math.max(1, parseInt(sessionsInput?.value) || 1));
     const cycleWeeks = Math.min(12, Math.max(2, parseInt(document.getElementById('program-cycle-weeks')?.value) || 5));
+    // Общая по умолчанию: в каталоге виден только шаблон (упражнения и подходы), личное состояние цикла не публикуется
+    const isPublic = document.getElementById('program-public')?.checked !== false;
 
     if (editingProgramId !== null) {
         const existingProgram = await db.programs.get(editingProgramId);
@@ -232,6 +241,7 @@ export async function createNewProgram() {
             slots,
             sessionsPerWeek,
             cycleWeeks,
+            isPublic,
             // Идущий цикл подстраивается под новую длину (текущая неделя не выходит за границы)
             ...(existingProgram?.cycle ? { cycle: setCycleLength(existingProgram.cycle, cycleWeeks) } : {})
         });
@@ -242,7 +252,8 @@ export async function createNewProgram() {
             exerciseIds: [...selectedExercisesForCreation],
             slots,
             sessionsPerWeek,
-            cycleWeeks
+            cycleWeeks,
+            isPublic
         });
         showToast("Программа создана успешно!", "success");
     }
@@ -270,6 +281,8 @@ export async function editRoutine(id) {
     if (sessionsInput) sessionsInput.value = routine.sessionsPerWeek || 1;
     const weeksSelect = document.getElementById('program-cycle-weeks');
     if (weeksSelect) weeksSelect.value = String(routine.cycle?.weeks || routine.cycleWeeks || 5);
+    const publicCheckbox = document.getElementById('program-public');
+    if (publicCheckbox) publicCheckbox.checked = routine.isPublic !== false;
 
     selectedExercisesForCreation = [...routine.exerciseIds];
     const allExercises = await db.exercises.toArray();
@@ -314,6 +327,8 @@ export function cancelEditRoutine() {
     if (sessionsInput) sessionsInput.value = 1;
     const weeksSelectReset = document.getElementById('program-cycle-weeks');
     if (weeksSelectReset) weeksSelectReset.value = '5';
+    const publicCheckboxReset = document.getElementById('program-public');
+    if (publicCheckboxReset) publicCheckboxReset.checked = true;
 
     selectedExercisesForCreation = [];
     selectedSlots = {};

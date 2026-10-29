@@ -11,6 +11,7 @@ import { authRoutes } from './modules/auth/auth.routes.js';
 import { syncRoutes } from './modules/sync/sync.routes.js';
 import { mediaRoutes } from './modules/media/media.routes.js';
 import { exerciseRoutes } from './modules/exercises/exercises.routes.js';
+import { catalogRoutes } from './modules/catalog/catalog.routes.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = fastify({
@@ -89,6 +90,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(syncRoutes, { prefix: '/api/v1/sync' });
   await app.register(mediaRoutes, { prefix: '/api/v1/media' });
   await app.register(exerciseRoutes, { prefix: '/api/v1/exercises' });
+  await app.register(catalogRoutes, { prefix: '/api/v1/catalog' });
 
   // 7. Глобальный обработчик ошибок
   app.setErrorHandler((error: FastifyError, request, reply) => {

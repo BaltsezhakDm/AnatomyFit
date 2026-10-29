@@ -161,6 +161,7 @@ export function mapProgramToServer(program, exerciseIdToUUID, deletedAt = null) 
         id: program.uuid,
         name: program.name,
         exerciseIds,
+        ...(program.isPublic === undefined || program.isPublic === null ? {} : { isPublic: !!program.isPublic }),
         plan: deletedAt ? null : buildPlanPayload(program, exerciseIdToUUID),
         updatedAt: deletedAt || program.updatedAt || Date.now(),
         deletedAt,

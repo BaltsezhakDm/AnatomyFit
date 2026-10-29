@@ -330,6 +330,7 @@ export async function createCustomExercise() {
 
         const detected = detectPatternAndEquipment(name, primaryMuscle, usesBodyweight);
         await db.exercises.update(idToUpdate, {
+            isPublic: document.getElementById('custom-exercise-public')?.checked !== false,
             name,
             primaryMuscle,
             secondaryMuscle,
@@ -360,6 +361,8 @@ export async function createCustomExercise() {
             tertiaryMuscle,
             tertiaryCoeff,
             isCustom: 1,
+            // Новое упражнение по умолчанию общее (видно всем в каталоге); личным его делает снятая галочка
+            isPublic: document.getElementById('custom-exercise-public')?.checked !== false,
             usesBodyweight,
             muscleLoads,
             movementPattern: detected.movementPattern,
@@ -415,7 +418,15 @@ export async function editExercise(id) {
         if (ex) editingExerciseId = String(id);
     }
     if (!ex) return;
+    if (ex.ownerName) {
+        // Добавлено из каталога: упражнение принадлежит другому пользователю
+        showToast(`Это упражнение добавлено из каталога (автор: ${ex.ownerName}) — менять его нельзя`, 'info');
+        closeExerciseForm();
+        return;
+    }
 
+    const publicCheckbox = document.getElementById('custom-exercise-public');
+    if (publicCheckbox) publicCheckbox.checked = ex.isPublic !== false;
     const nameInput = document.getElementById('custom-exercise-name');
     if (nameInput) nameInput.value = ex.name;
 
@@ -485,6 +496,8 @@ export function cancelEditExercise() {
     if (nameInput) nameInput.value = '';
 
     document.getElementById('custom-uses-bodyweight').checked = false;
+    const publicCheckbox = document.getElementById('custom-exercise-public');
+    if (publicCheckbox) publicCheckbox.checked = true; // по умолчанию общее
 
     activeLoads = {};
     renderSliders();
@@ -581,6 +594,14 @@ export async function loadAllExercisesList() {
             </span>
         ` : '';
 
+        const visibilityTag = item.ownerName
+            ? `<span class="inline-flex items-center px-1.5 py-0.5 bg-sky-500/10 border border-sky-500/20 text-[9px] rounded font-medium text-sky-300">от ${String(item.ownerName).replace(/</g, '&lt;')}</span>`
+            : item.isCustom
+                ? (item.isPublic === false
+                    ? '<span class="inline-flex items-center px-1.5 py-0.5 bg-zinc-800/80 border border-zinc-700/40 text-[9px] rounded font-medium text-zinc-400">личное</span>'
+                    : '<span class="inline-flex items-center px-1.5 py-0.5 bg-brand/10 border border-brand/20 text-[9px] rounded font-medium text-brand">общее</span>')
+                : '';
+
         return `
             <div id="exercise-card-${item.id}" class="bg-zinc-900 rounded-xl border border-zinc-800/30 overflow-hidden transition-all duration-200 hover:border-zinc-700/50">
                 <div onclick="window.toggleExerciseHistory(${item.id})" class="px-3 py-2.5 flex justify-between items-center text-xs cursor-pointer hover:bg-zinc-800/40 transition">
@@ -590,15 +611,16 @@ export async function loadAllExercisesList() {
                             <i data-lucide="line-chart" class="w-3.5 h-3.5 text-zinc-500 flex-shrink-0"></i>
                         </span>
                         <div class="flex flex-wrap gap-1.5 items-center">
+                            ${visibilityTag}
                             ${bwTag}
                             ${equipTag}
                             ${tagsHtml}
                         </div>
                     </div>
                     <div class="flex items-center gap-0.5 flex-shrink-0">
-                        <button onclick="event.stopPropagation(); window.editExercise(${item.id})" class="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-400 hover:text-brand hover:bg-zinc-800/60 transition flex-shrink-0" title="Редактировать" aria-label="Редактировать">
+                        ${item.ownerName ? '' : `<button onclick="event.stopPropagation(); window.editExercise(${item.id})" class="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-400 hover:text-brand hover:bg-zinc-800/60 transition flex-shrink-0" title="Редактировать" aria-label="Редактировать">
                             <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
-                        </button>
+                        </button>`}
                         <button onclick="event.stopPropagation(); window.deleteExercise(${item.id}, ${item.isCustom})" class="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-500 hover:text-red-400 hover:bg-zinc-800/60 transition flex-shrink-0" title="Удалить" aria-label="Удалить">
                             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                         </button>
