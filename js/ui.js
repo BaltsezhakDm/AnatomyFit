@@ -5,6 +5,7 @@ import { loadExercisesInSelect, loadAllExercisesList } from './exercises.js';
 import { buildActiveSessionUI, restoreSessionFromStorage, loadWorkoutHistory, setActiveSession, getSessionName, updatePickerModeUI } from './workout.js';
 import { getEffectiveWeight } from './core/exercise.js';
 import { renderProgressTab } from './progress.js';
+import { renderMachinesTab } from './machines-tab.js';
 import { initAuthUI } from './auth-ui.js';
 import './catalog-ui.js';
 import { createIcons, icons } from 'lucide';
@@ -86,7 +87,7 @@ export function closeConfirm(result) {
 }
 
 export async function switchTab(tabName) {
-    const sections = ['workout', 'programs', 'stats', 'progress', 'exercises', 'settings'];
+    const sections = ['workout', 'programs', 'stats', 'progress', 'machines', 'exercises', 'settings'];
     sections.forEach(sec => {
         const el = document.getElementById(`tab-${sec}`);
         const nav = document.getElementById(`nav-${sec}`);
@@ -106,6 +107,8 @@ export async function switchTab(tabName) {
         updateStatistics();
     } else if (tabName === 'progress') {
         await renderProgressTab();
+    } else if (tabName === 'machines') {
+        await renderMachinesTab();
     } else if (tabName === 'exercises') {
         loadAllExercisesList();
     } else if (tabName === 'programs') {

@@ -137,7 +137,7 @@ export async function deleteViewedPhoto() {
     }
 }
 
-let modalContext = null; // { exerciseId, currentId, onSelect, editingId }
+let modalContext = null; // { exerciseId, currentId, onSelect, editingId, manage, onChange }
 
 /** Строка «Тренажёр: …» над планом упражнения. */
 export function renderMachineChip(machine, machineCount) {
@@ -153,8 +153,12 @@ export function renderMachineChip(machine, machineCount) {
     chip.querySelector('[data-role="details"]').textContent = `${describeMachine(machine)}${machineCount > 1 ? ` · всего ${machineCount}` : ''}`;
 }
 
-export async function openMachineModal(exerciseId, currentId, onSelect) {
-    modalContext = { exerciseId, currentId, onSelect, editingId: null };
+/**
+ * @param {object} [options] manage — режим вкладки «Тренажёры»: окно остаётся открытым после правок, выбора тренажёра нет;
+ *                           onChange — вызывается после каждого добавления, правки или удаления.
+ */
+export async function openMachineModal(exerciseId, currentId, onSelect, { manage = false, onChange = null } = {}) {
+    modalContext = { exerciseId, currentId, onSelect, editingId: null, manage, onChange };
     await renderMachineModal();
     const modal = document.getElementById('machine-modal');
     if (modal) modal.classList.remove('hidden');
@@ -179,7 +183,7 @@ async function renderMachineModal() {
     }
 
     const rows = machines.map(m => {
-        const isCurrent = m.id === modalContext.currentId;
+        const isCurrent = !modalContext.manage && m.id === modalContext.currentId;
         const used = logCounts[m.id] || 0;
         return `
         <div class="bg-zinc-900 border ${isCurrent ? 'border-brand/40' : 'border-zinc-800'} rounded-xl p-3 space-y-2">
@@ -192,7 +196,7 @@ async function renderMachineModal() {
             </div>
             <div data-photo-strip="${m.id}"></div>
             <div class="flex gap-2">
-                ${isCurrent ? '' : `<button onclick="window.selectMachine(${m.id})" class="flex-1 bg-brand/10 text-brand text-xs font-bold py-2 rounded-lg">Выбрать</button>`}
+                ${isCurrent || modalContext.manage ? '' : `<button onclick="window.selectMachine(${m.id})" class="flex-1 bg-brand/10 text-brand text-xs font-bold py-2 rounded-lg">Выбрать</button>`}
                 <button onclick="window.editMachine(${m.id})" class="flex-1 bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs font-semibold py-2 rounded-lg">Изменить</button>
                 ${used === 0 ? `<button onclick="window.deleteMachine(${m.id})" class="px-3 bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-red-400 text-xs rounded-lg" aria-label="Удалить">✕</button>` : ''}
             </div>
@@ -202,13 +206,13 @@ async function renderMachineModal() {
     body.innerHTML = `
         <div class="text-xs text-zinc-400">${escapeHtml(exercise?.name || '')}. Вес, шаг прибавки и коэффициент рычага считаются отдельно для каждого тренажёра.</div>
         <div class="space-y-2">${rows || '<div class="text-xs text-zinc-500">Тренажёров пока нет.</div>'}</div>
-        <div id="machine-form-container">${machineFormHtml(null)}</div>`;
+        <div id="machine-form-container">${machineFormHtml(null, modalContext.manage)}</div>`;
 
     // Фото подгружаются после отрисовки списка (нужна сеть и вход в аккаунт)
     for (const m of machines) renderPhotoStrip(m);
 }
 
-function machineFormHtml(machine) {
+function machineFormHtml(machine, manage = false) {
     const m = machine || { name: '', kind: 'lever', step: '', factor: 1, factorSource: 'unknown', base: '' };
     const input = 'w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-2 text-sm text-zinc-200 focus:outline-none focus:border-brand';
     const mode = m.factorSource === 'auto' ? 'manual' : m.factorSource;
@@ -238,7 +242,7 @@ function machineFormHtml(machine) {
                 <input id="machine-base" type="number" min="0" max="500" step="0.5" inputmode="decimal" placeholder="0" value="${m.base || ''}" class="${input} mt-1 font-mono font-normal w-28">
             </label>
             <div class="flex gap-2">
-                <button onclick="window.saveMachineForm(${machine ? machine.id : 'null'})" class="flex-1 bg-brand hover:bg-brand-dark text-black font-bold py-2.5 rounded-xl text-sm">${machine ? 'Сохранить' : 'Добавить и выбрать'}</button>
+                <button onclick="window.saveMachineForm(${machine ? machine.id : 'null'})" class="flex-1 bg-brand hover:bg-brand-dark text-black font-bold py-2.5 rounded-xl text-sm">${machine ? 'Сохранить' : manage ? 'Добавить' : 'Добавить и выбрать'}</button>
                 ${machine ? '<button onclick="window.cancelMachineEdit()" class="px-4 bg-zinc-950 border border-zinc-800 text-zinc-400 rounded-xl text-sm">Отмена</button>' : ''}
             </div>
         </div>`;
@@ -249,7 +253,7 @@ export async function editMachine(id) {
     const container = document.getElementById('machine-form-container');
     if (!machine || !container) return;
     modalContext.editingId = id;
-    container.innerHTML = machineFormHtml(machine);
+    container.innerHTML = machineFormHtml(machine, modalContext.manage);
     container.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -305,6 +309,12 @@ export async function saveMachineForm(id) {
         machineId = await db.machines.add({ exerciseId: modalContext.exerciseId, ...fields });
         showToast('Тренажёр добавлен', 'success');
     }
+    if (modalContext.manage) {
+        modalContext.editingId = null;
+        await renderMachineModal();
+        await modalContext.onChange?.();
+        return;
+    }
     const { onSelect } = modalContext;
     closeMachineModal();
     if (onSelect) await onSelect(machineId);
@@ -325,6 +335,11 @@ export async function deleteMachine(id) {
     const ok = await showConfirm('Удалить этот тренажёр?');
     if (!ok) return;
     await db.machines.delete(id);
+    if (modalContext?.manage) {
+        await renderMachineModal();
+        await modalContext.onChange?.();
+        return;
+    }
     const wasCurrent = modalContext?.currentId === id;
     if (wasCurrent) {
         const context = modalContext;
