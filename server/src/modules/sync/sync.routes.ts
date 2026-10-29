@@ -8,6 +8,7 @@ import {
   workoutSessions,
   workoutSets,
   bodyMeasurements,
+  machines,
   userSettings,
 } from '../../db/schema.js';
 import { authenticate } from '../../middleware/auth.js';
@@ -95,6 +96,18 @@ const rowSchemas = {
     updatedAt: timestamp,
     deletedAt: timestamp,
   }),
+  machines: z.object({
+    id,
+    exerciseId: id,
+    name: z.string().min(1).max(100),
+    kind: z.enum(['stack', 'lever', 'plates', 'barbell', 'other']).nullish(),
+    step: z.number().positive().max(100).nullish(),
+    factor: z.number().min(0.05).max(5),
+    factorSource: z.enum(['unknown', 'same', 'manual', 'auto']).nullish(),
+    base: z.number().min(0).max(500).nullish(),
+    updatedAt: timestamp,
+    deletedAt: timestamp,
+  }),
   workoutSessions: z.object({
     id,
     programDayId: id.nullish(),
@@ -112,6 +125,7 @@ const rowSchemas = {
     id,
     sessionId: id,
     exerciseId: id,
+    machineId: id.nullish(),
     setOrder: optNum,
     setType: z.string().max(50).nullish(),
     weight: num,
@@ -155,6 +169,7 @@ const bodySchema = z.object({
       programs: z.array(z.unknown()).optional(),
       programDays: z.array(z.unknown()).optional(),
       programExercises: z.array(z.unknown()).optional(),
+      machines: z.array(z.unknown()).optional(),
       workoutSessions: z.array(z.unknown()).optional(),
       workoutSets: z.array(z.unknown()).optional(),
       bodyMeasurements: z.array(z.unknown()).optional(),
@@ -188,6 +203,7 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       WHERE pd.id = ? AND p.user_id = ?
     `).pluck();
     const ownsSession = sqlite.prepare('SELECT 1 FROM workout_sessions WHERE id = ? AND user_id = ?').pluck();
+    const ownsMachine = sqlite.prepare('SELECT 1 FROM machines WHERE id = ? AND user_id = ?').pluck();
     const canUseExercise = sqlite.prepare(
       'SELECT 1 FROM exercises WHERE id = ? AND (user_id IS NULL OR user_id = ?)'
     ).pluck();
@@ -364,6 +380,41 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         );
       });
 
+      // Д0. Тренажёры упражнений (упражнение — своё или системное)
+      const upsertMachine = sqlite.prepare(`
+        INSERT INTO machines (id, user_id, exercise_id, name, kind, step, factor, factor_source, base_load, updated_at, synced_at, deleted_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          kind = excluded.kind,
+          step = excluded.step,
+          factor = excluded.factor,
+          factor_source = excluded.factor_source,
+          base_load = excluded.base_load,
+          updated_at = excluded.updated_at,
+          synced_at = excluded.synced_at,
+          deleted_at = excluded.deleted_at
+        WHERE excluded.updated_at >= machines.updated_at AND machines.user_id = ?
+      `);
+      applyRows('machines', push.machines, m => {
+        if (!canUseExercise.get(m.exerciseId, userId)) return 'forbidden';
+        upsertMachine.run(
+          m.id,
+          userId,
+          m.exerciseId,
+          m.name,
+          m.kind || 'other',
+          m.step ?? null,
+          m.factor,
+          m.factorSource || 'same',
+          m.base ?? 0,
+          m.updatedAt || serverTimestamp,
+          serverTimestamp,
+          m.deletedAt || null,
+          userId
+        );
+      });
+
       // Д. Тренировочные сессии
       const upsertSession = sqlite.prepare(`
         INSERT INTO workout_sessions (
@@ -408,8 +459,8 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       const upsertSet = sqlite.prepare(`
         INSERT INTO workout_sets (
           id, user_id, session_id, exercise_id, set_order, set_type,
-          weight, reps, rpe, rir, comment, log_date, completed_at, updated_at, synced_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          weight, reps, rpe, rir, machine_id, comment, log_date, completed_at, updated_at, synced_at, deleted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           set_order = excluded.set_order,
           set_type = excluded.set_type,
@@ -428,6 +479,7 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       applyRows('workoutSets', push.workoutSets, s => {
         if (!ownsSession.get(s.sessionId, userId)) return 'forbidden';
         if (!canUseExercise.get(s.exerciseId, userId)) return 'forbidden';
+        if (s.machineId && !ownsMachine.get(s.machineId, userId)) return 'forbidden';
         upsertSet.run(
           s.id,
           userId,
@@ -439,6 +491,7 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
           s.reps,
           s.rpe ?? null,
           s.rir ?? null,
+          s.machineId ?? null,
           s.comment || null,
           s.logDate || new Date().toISOString().split('T')[0],
           s.completedAt || serverTimestamp,
@@ -523,6 +576,12 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       WHERE p.user_id = ? AND pe.synced_at >= ?
     `).all(userId, lastSync);
 
+    const pullMachines = db
+      .select()
+      .from(machines)
+      .where(and(eq(machines.userId, userId), gte(machines.syncedAt, lastSync)))
+      .all();
+
     const pullWorkoutSessions = db
       .select()
       .from(workoutSessions)
@@ -558,6 +617,7 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         })),
         programDays: pullProgramDays,
         programExercises: pullProgramExercises,
+        machines: pullMachines,
         workoutSessions: pullWorkoutSessions,
         workoutSets: pullWorkoutSets,
         bodyMeasurements: pullMeasurements,

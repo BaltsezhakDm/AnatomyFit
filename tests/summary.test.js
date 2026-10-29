@@ -69,3 +69,25 @@ test('удалённое упражнение не ломает итог', () =>
     assert.equal(summary.exercises[0].name, 'Удалённое упражнение');
     assert.equal(summary.totalSets, 1);
 });
+
+// ---------- тренажёры ----------
+
+const lever = { id: 2, name: 'Рычаг', factor: 0.3, base: 0 };
+const stack = { id: 1, name: 'Блок', factor: 1, base: 0 };
+
+test('цель сравнивается на том же тренажёре с учётом коэффициента', () => {
+    const target = { weight: 100, reps: 8 };
+    assert.equal(compareToTarget({ weight: 100, reps: 8 }, target, bench, 80, lever), 'hit');
+    assert.equal(compareToTarget({ weight: 90, reps: 8 }, target, bench, 80, lever), 'below');
+});
+
+test('рекорд сравнивается по эффективной нагрузке разных тренажёров: 100 кг на рычаге 0.3 (=30) — не рекорд против 40 на блоке', () => {
+    const run = (prior, logs) => summarizeSession({
+        logs, planEntries: null, exercisesById: { 1: bench }, priorLogsByExerciseId: { 1: prior },
+        bodyWeight: 80, durationMs: 0, machinesById: { 1: stack, 2: lever },
+    });
+    const priorOnStack = [{ weight: 40, reps: 8, machineId: 1 }];
+    assert.deepEqual(run(priorOnStack, [{ ...set(1, 1, 100, 8), machineId: 2 }]).prs, [], '100×0.3=30 < 40');
+    assert.deepEqual(run(priorOnStack, [{ ...set(1, 1, 150, 8), machineId: 2 }]).prs, ['Жим'], '150×0.3=45 > 40');
+    assert.equal(run(priorOnStack, [{ ...set(1, 1, 150, 8), machineId: 2 }]).exercises[0].machineName, 'Рычаг');
+});

@@ -9,6 +9,7 @@ import { getMonthlyBuckets } from './core/periods.js';
 import { showToast, showConfirm } from './ui.js';
 import { parseLocalDate } from './core/dates.js';
 import { sessionsOf } from './core/planner.js';
+import { logLoad } from './core/machines.js';
 import { seriesFromSessions, detectPlateau, plateauAdvice } from './core/trends.js';
 
 let monthlyVolumeChartInstance = null;
@@ -60,7 +61,8 @@ export async function renderPRList(logsArg, exercisesByIdArg) {
     }
 
     const bodyWeight = getBodyWeight();
-    let prs = computeAllTimeBests(logs, exercisesById, bodyWeight);
+    const machinesById = Object.fromEntries((await db.machines.toArray()).map(m => [m.id, m]));
+    let prs = computeAllTimeBests(logs, exercisesById, bodyWeight, machinesById);
     prs.sort((a, b) => a.exercise.name.localeCompare(b.exercise.name));
 
     const searchInput = document.getElementById('pr-search-input');
@@ -388,7 +390,9 @@ export async function renderExerciseTrend(logsArg, exercisesByIdArg) {
 
     const allLogs = logsArg || await db.workoutLogs.toArray();
     const logs = allLogs.filter(l => l.exerciseId === exerciseId);
-    const sessions = sessionsOf(logs, exercise, getBodyWeight(), null); // null — без исключения сегодняшних подходов
+    // Сравнение по эффективной нагрузке: смена тренажёра (другой зал) не выглядит как спад или рост
+    const machinesById = Object.fromEntries((await db.machines.toArray()).map(m => [m.id, m]));
+    const sessions = sessionsOf(logs, exercise, getBodyWeight(), null, log => logLoad(log, machinesById)); // null — без исключения сегодняшних подходов
     const series = seriesFromSessions(sessions);
     const verdict = detectPlateau(sessions);
 

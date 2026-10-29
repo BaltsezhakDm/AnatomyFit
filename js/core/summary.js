@@ -3,15 +3,16 @@
  */
 
 import { calculate1RM, getEffectiveWeight } from './exercise.js';
+import { loadOf, logLoad } from './machines.js';
 
 const HIT_TOLERANCE = 0.98; // не меньше 98% от плановой «силы» подхода — цель выполнена
 const ABOVE_MARGIN = 1.03; // выше плана больше чем на 3% — подход «сверх плана»
 const PR_MARGIN = 1.001;
 
 /** Сравнение подхода с целью по расчётному 1ПМ: вес и повторы взаимозаменяемы (больше повторов при меньшем весе — тоже выполнение). */
-export function compareToTarget(actual, target, exercise, bodyWeight) {
+export function compareToTarget(actual, target, exercise, bodyWeight, machine = null) {
     if (!target || target.weight === null || target.weight === undefined) return null;
-    const oneRM = (set) => calculate1RM(getEffectiveWeight(set.weight, exercise.usesBodyweight, bodyWeight), set.reps);
+    const oneRM = (set) => calculate1RM(getEffectiveWeight(loadOf(machine, set.weight), exercise.usesBodyweight, bodyWeight), set.reps);
     const ratio = oneRM(actual) / oneRM(target);
     if (ratio >= ABOVE_MARGIN) return 'above';
     if (ratio >= HIT_TOLERANCE) return 'hit';
@@ -26,9 +27,10 @@ export function compareToTarget(actual, target, exercise, bodyWeight) {
  * @param {object} input.priorLogsByExerciseId подходы ДО этой тренировки (для рекордов)
  * @param {number} input.bodyWeight
  * @param {number} input.durationMs
+ * @param {object} [input.machinesById] тренажёры: рекорды сравниваются по эффективной нагрузке, цель — на том же тренажёре
  * @param {object} [input.nextByExercise] exerciseId -> { weight, reps } — цель на следующий раз (считается снаружи)
  */
-export function summarizeSession({ logs, planEntries, exercisesById, priorLogsByExerciseId, bodyWeight, durationMs, nextByExercise = {} }) {
+export function summarizeSession({ logs, planEntries, exercisesById, priorLogsByExerciseId, bodyWeight, durationMs, nextByExercise = {}, machinesById = null }) {
     const planByExercise = new Map((planEntries || []).map(e => [e.exerciseId, e]));
     const order = [...new Set(logs.map(l => l.exerciseId))];
 
@@ -44,11 +46,11 @@ export function summarizeSession({ logs, planEntries, exercisesById, priorLogsBy
                 reps: set.reps,
                 rir: set.rir ?? null,
                 target: target ? { weight: target.weight, reps: target.reps } : null,
-                status: exercise ? compareToTarget(set, target, exercise, bodyWeight) : null,
+                status: exercise ? compareToTarget(set, target, exercise, bodyWeight, machinesById ? machinesById[set.machineId] : null) : null,
             };
         });
 
-        const oneRM = (set) => calculate1RM(getEffectiveWeight(set.weight, exercise?.usesBodyweight, bodyWeight), set.reps);
+        const oneRM = (set) => calculate1RM(getEffectiveWeight(logLoad(set, machinesById), exercise?.usesBodyweight, bodyWeight), set.reps);
         const bestToday = Math.max(...sets.map(oneRM));
         const prior = priorLogsByExerciseId[exerciseId] || [];
         const priorBest = prior.length > 0 ? Math.max(...prior.map(oneRM)) : null;
@@ -56,6 +58,7 @@ export function summarizeSession({ logs, planEntries, exercisesById, priorLogsBy
         return {
             exerciseId,
             name: exercise?.name || 'Удалённое упражнение',
+            machineName: machinesById?.[sets[0]?.machineId]?.name || null,
             sets: detailed,
             plannedSets: entry && entry.status === 'planned' ? entry.sets.length : null,
             isPR: priorBest !== null && bestToday > priorBest * PR_MARGIN,

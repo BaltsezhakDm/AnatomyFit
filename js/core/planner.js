@@ -13,6 +13,7 @@
 import { calculate1RM, getEffectiveWeight } from './exercise.js';
 import { getProgressionAdvice } from './progression.js';
 import { detectPlateau } from './trends.js';
+import { loadOf, plateOf, belongsToMachine, oneRMOfSet, pickReference } from './machines.js';
 
 export const DEFAULT_MESOCYCLE_WEEKS = 5;
 /** Сдвиг диапазона повторений основных движений по номеру мезоцикла (по кругу). */
@@ -238,7 +239,7 @@ export function repRangeFor(slot, cycleIndex, inferred = null) {
 // ---------- История ----------
 
 /** Тренировочные дни упражнения по возрастанию даты (без сегодняшнего), лучший подход каждого дня по 1ПМ. */
-export function sessionsOf(logs, exercise, bodyWeight, today) {
+export function sessionsOf(logs, exercise, bodyWeight, today, loadOfLog = null) {
     const byDate = new Map();
     for (const log of logs) {
         if (log.date === today) continue;
@@ -250,9 +251,10 @@ export function sessionsOf(logs, exercise, bodyWeight, today) {
         .map(([date, sets]) => {
             let best = null;
             for (const set of sets) {
-                // 1ПМ «с учётом запаса»: подход с запасом k повторений равен k+reps повторам до отказа
+                // 1ПМ «с учётом запаса»: подход с запасом k повторений равен k+reps повторам до отказа;
+                // loadOfLog переводит навешенный вес в эффективную нагрузку (учёт тренажёра), по умолчанию — вес как есть
                 const rir = set.rir ?? ASSUMED_LAST_RIR;
-                const oneRM = calculate1RM(getEffectiveWeight(set.weight, exercise.usesBodyweight, bodyWeight), set.reps + rir);
+                const oneRM = oneRMOfSet(set, loadOfLog ? loadOfLog(set) : set.weight, exercise.usesBodyweight, bodyWeight);
                 if (!best || oneRM > best.oneRM) best = { weight: set.weight, reps: set.reps, oneRM, rir };
             }
             return { date, sets, best };
@@ -277,54 +279,77 @@ export function fatigueSignal(sessionsByExercise) {
 
 /**
  * Цель на тренировку для одного слота.
- * @returns {{ status: 'needs_baseline'|'planned', sets: Array<{weight:number|null, reps:number, rir:number}>, ... }}
+ * @param {object} input
+ * @param {object} [input.machine] выбранный тренажёр (шаг, коэффициент рычага); без него вес считается как есть
+ * @param {Array} input.logs подходы ИМЕННО на этом тренажёре
+ * @param {object|null} [input.reference] опорный 1ПМ с других тренажёров (pickReference) — для первой тренировки на новом
+ * @returns {{ status: 'needs_baseline'|'estimated'|'planned', sets: Array<{weight:number|null, reps:number, rir:number}>, ... }}
  */
-export function planExercise({ slot, exercise, logs, bodyWeight, profile, cycleIndex, today }) {
-    const sessions = sessionsOf(logs, exercise, bodyWeight, today);
+export function planExercise({ slot, exercise, machine = null, logs, bodyWeight, profile, cycleIndex, today, reference = null, repRangeHint = null }) {
+    const toLoad = (weight) => loadOf(machine, weight);
+    const toPlate = (load) => plateOf(machine, load);
+    const sessions = sessionsOf(logs, exercise, bodyWeight, today, log => toLoad(log.weight));
     const last = sessions[sessions.length - 1] || null;
-    const range = repRangeFor(slot, cycleIndex, inferRepRange(sessions));
+    // Диапазон повторений: из истории этого тренажёра, а на новом — из истории упражнения на других тренажёрах
+    const range = repRangeFor(slot, cycleIndex, inferRepRange(sessions) || repRangeHint);
     const targetReps = range.min + Math.round((range.max - range.min) / 2);
     const rir = profile.rir;
     const setCount = Math.max(1, Math.round(slot.sets * profile.volume));
     const grid = inferWeightGrid(logs);
-    const step = stepFor(exercise, slot, grid?.step ?? null);
-    const stepSource = slot.step ? 'slot' : grid ? 'history' : 'default';
+    // Шаг в навешенных кг: слот программы -> заданный на тренажёре -> по истории тренажёра -> по оборудованию
+    const manualStep = slot.step || machine?.step || null;
+    const step = stepFor(exercise, { step: manualStep }, grid?.step ?? null);
+    const stepSource = slot.step ? 'slot' : machine?.step ? 'machine' : grid ? 'history' : 'default';
     // «Недавний максимум» не подставляется в цель автоматически — только показывается рядом с «прошлым разом»
     const advice = getProgressionAdvice(logs, exercise, bodyWeight);
     const recentBest = advice.type === 'advice' ? advice.recentBest : null;
 
     const plateau = detectPlateau(sessions);
-    const base = { exerciseId: exercise.id, role: slot.role, range, targetReps, rir, step, stepSource, deload: profile.isDeload, recentBest, plateau: plateau.status === 'plateau' || plateau.status === 'regressing' ? plateau : null };
+    const base = {
+        exerciseId: exercise.id, machineId: machine?.id ?? null, role: slot.role, range, targetReps, rir, step, stepSource,
+        deload: profile.isDeload, recentBest, reference,
+        plateau: plateau.status === 'plateau' || plateau.status === 'regressing' ? plateau : null,
+    };
+    const bw = exercise.usesBodyweight ? bodyWeight : 0;
+    const sets = (weight, reps = targetReps) => Array.from({ length: setCount }, () => ({ weight, reps, rir }));
 
     if (!last) {
-        return {
-            ...base,
-            status: 'needs_baseline',
-            lastTime: null,
-            sets: Array.from({ length: setCount }, () => ({ weight: null, reps: targetReps, rir })),
-        };
+        // Новый тренажёр: если коэффициент известен, а на других тренажёрах упражнения есть история — оценка по ним
+        const factorKnown = machine && machine.factorSource !== 'unknown';
+        if (reference && factorKnown) {
+            const effective = reference.oneRM / (1 + (targetReps + rir) / 30);
+            const weight = snapToGrid(toPlate(effective - bw), step, 0);
+            return {
+                ...base,
+                status: 'estimated',
+                note: `Оценка по тренажёру «${reference.machineName}» — уточнится после первой тренировки`,
+                estimatedFrom: { machineId: reference.machineId, machineName: reference.machineName, date: reference.date },
+                lastTime: null,
+                sets: sets(weight),
+            };
+        }
+        return { ...base, status: 'needs_baseline', hasReference: !!reference, lastTime: null, sets: sets(null) };
     }
 
     const lastWeight = last.best.weight;
     // Сетка весов: найденная по истории (если шаг не задан вручную), иначе — от последнего веса пользователя
-    const gridAnchor = !slot.step && grid ? grid.anchor : lastWeight;
-    // Все границы считаются по эффективному весу (вес тела + добавочный): добавочный вес бывает отрицательным —
+    const gridAnchor = !manualStep && grid ? grid.anchor : lastWeight;
+    // Границы считаются по эффективной нагрузке (вес тела + нагрузка тренажёра): добавочный вес бывает отрицательным —
     // это подтягивания с поддержкой, и рост нагрузки там означает уменьшение помощи
-    const bw = exercise.usesBodyweight ? bodyWeight : 0;
-    const lastEffective = lastWeight + bw;
+    const lastEffective = toLoad(lastWeight) + bw;
     const oneRM = last.best.oneRM; // уже учитывает запас повторений (заданный RIR или предположение)
     let note = null;
 
     let weight;
     if (profile.isDeload) {
-        weight = snapToGrid((lastEffective * DELOAD_WEIGHT_RATIO) - bw, step, gridAnchor);
+        weight = snapToGrid(toPlate(lastEffective * DELOAD_WEIGHT_RATIO - bw), step, gridAnchor);
         note = 'Разгрузка: вес ниже, объём вдвое меньше';
     } else {
         const effective = oneRM / (1 + (targetReps + rir) / 30);
-        weight = snapToGrid(effective - bw, step, gridAnchor);
+        weight = snapToGrid(toPlate(effective - bw), step, gridAnchor);
 
-        const ceiling = Math.max(snapToGrid(lastEffective * MAX_WEIGHT_GAIN - bw, step, gridAnchor), snapToGrid(lastWeight + step, step, gridAnchor));
-        const floor = snapToGrid(lastEffective * MIN_WEIGHT_RATIO - bw, step, gridAnchor);
+        const ceiling = Math.max(snapToGrid(toPlate(lastEffective * MAX_WEIGHT_GAIN - bw), step, gridAnchor), snapToGrid(lastWeight + step, step, gridAnchor));
+        const floor = snapToGrid(toPlate(lastEffective * MIN_WEIGHT_RATIO - bw), step, gridAnchor);
         if (weight > ceiling) { weight = ceiling; note = 'Рост ограничен 5% за тренировку'; }
         if (weight < floor) { weight = floor; }
 
@@ -340,7 +365,7 @@ export function planExercise({ slot, exercise, logs, bodyWeight, profile, cycleI
         status: 'planned',
         note,
         lastTime: { date: last.date, weight: lastWeight, reps: last.best.reps, sets: last.sets.length },
-        sets: Array.from({ length: setCount }, () => ({ weight, reps: targetReps, rir })),
+        sets: sets(weight),
     };
 }
 
@@ -348,19 +373,40 @@ export function planExercise({ slot, exercise, logs, bodyWeight, profile, cycleI
  * План тренировки по программе на сегодня.
  * @param {{ program: object, exercisesById: object, logsByExerciseId: object, bodyWeight: number, today: string, cycle?: object }} input
  */
-export function planSession({ program, exercisesById, logsByExerciseId, bodyWeight, today, cycle }) {
+export function planSession({ program, exercisesById, logsByExerciseId, bodyWeight, today, cycle, machines = [], selectedMachineByExercise = {} }) {
     const activeCycle = cycle || program.cycle || defaultCycle(today);
     const profile = weekProfile(activeCycle.week, activeCycle.weeks);
     const slots = normalizeSlots(program, exercisesById);
 
-    const exercises = slots.map(slot => {
+    const machinesByExercise = new Map();
+    for (const m of machines) {
+        if (!machinesByExercise.has(m.exerciseId)) machinesByExercise.set(m.exerciseId, []);
+        machinesByExercise.get(m.exerciseId).push(m);
+    }
+
+    const perExercise = slots.map(slot => {
         const exercise = exercisesById[slot.exerciseId];
-        const logs = logsByExerciseId[slot.exerciseId] || [];
-        return planExercise({ slot, exercise, logs, bodyWeight, profile, cycleIndex: activeCycle.index, today });
+        const allLogs = logsByExerciseId[slot.exerciseId] || [];
+        const own = machinesByExercise.get(slot.exerciseId) || [];
+        const machine = chooseMachine(own, allLogs, selectedMachineByExercise[slot.exerciseId]);
+        const logs = machine ? allLogs.filter(l => belongsToMachine(l, machine, own)) : allLogs;
+
+        // Опорная сила с других тренажёров этого упражнения — для первой тренировки на новом
+        const others = own.filter(m => m !== machine).map(m => ({
+            machine: m,
+            sessions: sessionsOf(allLogs.filter(l => belongsToMachine(l, m, own)), exercise, bodyWeight, today, log => loadOf(m, log.weight)),
+        }));
+        const reference = machine ? pickReference(others) : null;
+        const repRangeHint = inferRepRange(sessionsOf(allLogs, exercise, bodyWeight, today));
+        return { slot, exercise, machine, logs, reference, repRangeHint };
     });
 
-    const history = slots.map(slot =>
-        sessionsOf(logsByExerciseId[slot.exerciseId] || [], exercisesById[slot.exerciseId], bodyWeight, today)
+    const exercises = perExercise.map(({ slot, exercise, machine, logs, reference, repRangeHint }) =>
+        planExercise({ slot, exercise, machine, logs, bodyWeight, profile, cycleIndex: activeCycle.index, today, reference, repRangeHint })
+    );
+
+    const history = perExercise.map(({ exercise, machine, logs }) =>
+        sessionsOf(logs, exercise, bodyWeight, today, log => loadOf(machine, log.weight))
     );
 
     return {
@@ -370,4 +416,13 @@ export function planSession({ program, exercisesById, logsByExerciseId, bodyWeig
         exercises,
         fatigue: !profile.isDeload && fatigueSignal(history),
     };
+}
+
+/** Тренажёр для упражнения: выбранный пользователем, иначе последний, на котором занимались, иначе первый заведённый. */
+export function chooseMachine(machines, logs, selectedId) {
+    if (machines.length === 0) return null;
+    const selected = machines.find(m => m.id === selectedId);
+    if (selected) return selected;
+    const lastLog = logs.filter(l => l.machineId != null).sort((a, b) => (b.date + String(b.id ?? '')).localeCompare(a.date + String(a.id ?? '')))[0];
+    return machines.find(m => m.id === lastLog?.machineId) || machines[0];
 }

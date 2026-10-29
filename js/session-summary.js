@@ -33,7 +33,7 @@ async function computeNextTargets(session, planData) {
     // Неделя закрыта этой тренировкой — следующая тренировка пойдёт по следующей неделе цикла
     const cycle = done >= perWeek ? advanceCycle(countedCycle, nextDay) : countedCycle;
 
-    const next = await loadProgramPlan(session.id, { today: nextDay, cycle });
+    const next = await loadProgramPlan(session.id, { today: nextDay, cycle, selectedMachineByExercise: session.machineByExercise || {} });
     if (!next) return {};
     const targets = {};
     for (const entry of next.plan.exercises) {
@@ -59,8 +59,9 @@ export async function buildSessionSummary(session) {
 
     const isRoutine = session.type === 'routine' && session.id;
     // План, по которому шла тренировка: сегодняшние подходы в историю не входят, поэтому он стабилен
-    const planData = isRoutine ? await loadProgramPlan(session.id) : null;
+    const planData = isRoutine ? await loadProgramPlan(session.id, { selectedMachineByExercise: session.machineByExercise || {} }) : null;
     const nextByExercise = await computeNextTargets(session, planData);
+    const machinesById = Object.fromEntries((await db.machines.toArray()).map(m => [m.id, m]));
 
     return {
         sessionName: session.name,
@@ -73,6 +74,7 @@ export async function buildSessionSummary(session) {
             bodyWeight: getBodyWeight(),
             durationMs: Date.now() - Number(session.sessionId),
             nextByExercise,
+            machinesById,
         }),
         exercisesById,
     };
@@ -119,7 +121,7 @@ export function renderSessionSummary(summary) {
         return `
         <div class="bg-brand-card border border-zinc-800 rounded-xl p-3 space-y-2">
             <div class="flex items-center justify-between gap-2">
-                <span class="text-xs font-bold text-zinc-200">${escapeHtml(e.name)}</span>
+                <span class="text-xs font-bold text-zinc-200">${escapeHtml(e.name)}${e.machineName ? ` <span class="text-zinc-500 font-normal">· ${escapeHtml(e.machineName)}</span>` : ''}</span>
                 ${e.isPR ? '<span class="text-[9px] font-bold text-brand bg-brand/10 border border-brand/25 rounded px-1.5 py-0.5">РЕКОРД</span>' : ''}
             </div>
             <div class="flex flex-wrap gap-1.5">${e.sets.map(set => setChip(set, exercise)).join('')}</div>

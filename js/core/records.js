@@ -1,20 +1,22 @@
 import { calculate1RM, getEffectiveWeight } from './exercise.js';
+import { logLoad } from './machines.js';
 
 /**
  * Находит для каждого упражнения лучший подход за всю историю (по расчетному 1ПМ).
  * @param {Array} logs - все workoutLogs
  * @param {Object} exercisesById - карта id упражнения -> запись упражнения
  * @param {number} bodyWeight - текущий вес тела (для упражнений со своим весом)
+ * @param {object} [machinesById] - тренажёры: рекорды разных тренажёров сравниваются по эффективной нагрузке
  * @returns {Array} [{ exerciseId, exercise, weight, reps, oneRM, date }]
  */
-export function computeAllTimeBests(logs, exercisesById, bodyWeight) {
+export function computeAllTimeBests(logs, exercisesById, bodyWeight, machinesById = null) {
     const bests = {};
 
     logs.forEach(log => {
         const ex = exercisesById[log.exerciseId];
         if (!ex) return;
 
-        const effW = getEffectiveWeight(log.weight, ex.usesBodyweight, bodyWeight);
+        const effW = getEffectiveWeight(logLoad(log, machinesById), ex.usesBodyweight, bodyWeight);
         const oneRM = calculate1RM(effW, log.reps);
 
         const current = bests[log.exerciseId];
@@ -24,7 +26,8 @@ export function computeAllTimeBests(logs, exercisesById, bodyWeight) {
                 weight: log.weight,
                 reps: log.reps,
                 oneRM,
-                date: log.date
+                date: log.date,
+                machineId: log.machineId ?? null
             };
         }
     });
@@ -39,10 +42,10 @@ export function computeAllTimeBests(logs, exercisesById, bodyWeight) {
  * для определения, побил ли новый подход рекорд).
  * @param {Array} logsForExercise - подходы только этого упражнения
  */
-export function getBest1RM(logsForExercise, exercise, bodyWeight) {
+export function getBest1RM(logsForExercise, exercise, bodyWeight, machinesById = null) {
     let max1RM = 0;
     logsForExercise.forEach(log => {
-        const effW = getEffectiveWeight(log.weight, exercise.usesBodyweight, bodyWeight);
+        const effW = getEffectiveWeight(logLoad(log, machinesById), exercise.usesBodyweight, bodyWeight);
         const oneRM = calculate1RM(effW, log.reps);
         if (oneRM > max1RM) max1RM = oneRM;
     });

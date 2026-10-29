@@ -11,7 +11,10 @@ const { sessionUuidFromLocalId } = await import('../js/core/sync-mapping.js');
 const tick = () => new Promise(r => setTimeout(r, 15)); // tombstone пишется после завершения транзакции удаления
 
 beforeEach(async () => {
-    for (const table of [db.exercises, db.workoutLogs, db.programs, db.bodyWeightLogs, db.tombstones]) await table.clear();
+    // clear() тоже вызывает хуки удаления (tombstones пишутся асинхронно), поэтому журнал чистим последним и после паузы
+    for (const table of [db.exercises, db.workoutLogs, db.programs, db.bodyWeightLogs, db.machines]) await table.clear();
+    await tick();
+    await db.tombstones.clear();
 });
 
 async function seedExercise(overrides = {}) {
@@ -220,4 +223,61 @@ test('удаление программы уходит без плана', async
     const sent = push.programs.find(p => p.id === program.uuid);
     assert.equal(sent.plan, null);
     assert.ok(sent.deletedAt);
+});
+
+test('тренажёры и привязка подходов уходят в push: тренажёр раньше подходов, подход ссылается на UUID тренажёра', async () => {
+    const ex = await seedExercise();
+    const machineId = await db.machines.add({ exerciseId: ex.id, name: 'Рычаг', kind: 'lever', step: 5, factor: 0.3, factorSource: 'manual', base: 0 });
+    const machine = await db.machines.get(machineId);
+    await db.workoutLogs.add({ date: '2026-01-01', exerciseId: ex.id, machineId, weight: 100, reps: 8, sessionId: 1792787442600 });
+    const { push } = await collectPush(0);
+    assert.equal(push.machines.length, 1);
+    assert.deepEqual([push.machines[0].id, push.machines[0].exerciseId, push.machines[0].factor], [machine.uuid, ex.uuid, 0.3]);
+    assert.equal(push.workoutSets[0].machineId, machine.uuid);
+});
+
+test('pull: тренажёр создаётся, подходы привязываются к нему; подход с ещё не загруженным тренажёром откладывается', async () => {
+    const ex = await seedExercise();
+    const sessionId = sessionUuidFromLocalId(1792787442600);
+    const set = (id, machineId) => ({ id, sessionId, exerciseId: ex.uuid, machineId, weight: 100, reps: 8, logDate: '2026-01-01', updatedAt: 5 });
+
+    const first = await applyPull({
+        machines: [{ id: 'm-remote', exerciseId: ex.uuid, name: 'Блок', kind: 'stack', step: 4, factor: 1, factorSource: 'same', baseLoad: 0, updatedAt: 5 }],
+        workoutSets: [set('s-ok', 'm-remote'), set('s-missing', 'm-unknown'), set('s-plain', null)],
+    });
+    assert.equal(first.deferred, 1);
+    const machine = await db.machines.where('uuid').equals('m-remote').first();
+    assert.deepEqual([machine.name, machine.step, machine.exerciseId], ['Блок', 4, ex.id]);
+    assert.equal((await db.workoutLogs.where('uuid').equals('s-ok').first()).machineId, machine.id);
+    assert.equal((await db.workoutLogs.where('uuid').equals('s-plain').first()).machineId, undefined);
+    assert.equal(await db.workoutLogs.where('uuid').equals('s-missing').count(), 0);
+});
+
+test('pull: изменение коэффициента применяется, более старая версия не затирает локальную; удаление тренажёра', async () => {
+    const ex = await seedExercise();
+    const id = await db.machines.add({ exerciseId: ex.id, name: 'M', kind: 'lever', step: null, factor: 0.3, factorSource: 'manual', base: 0 });
+    const machine = await db.machines.get(id);
+    const remote = (factor, updatedAt, extra = {}) => ({ machines: [{ id: machine.uuid, exerciseId: ex.uuid, name: 'M', kind: 'lever', factor, factorSource: 'auto', updatedAt, ...extra }] });
+
+    await applyPull(remote(0.5, machine.updatedAt - 1000));
+    assert.equal((await db.machines.get(id)).factor, 0.3, 'локальная правка новее');
+    await applyPull(remote(0.31, machine.updatedAt + 1000));
+    assert.deepEqual([(await db.machines.get(id)).factor, (await db.machines.get(id)).factorSource], [0.31, 'auto']);
+
+    await applyPull(remote(0.31, machine.updatedAt + 2000, { deletedAt: 1 }));
+    assert.equal(await db.machines.get(id), undefined);
+    await tick();
+    const stray = (await db.tombstones.toArray()).filter(t => t.table === 'machines');
+    assert.equal(stray.length, 0, 'удаление с сервера не порождает tombstone: ' + JSON.stringify(stray.map(t => t.uuid)));
+});
+
+test('удаление тренажёра локально уходит в push с deletedAt', async () => {
+    const ex = await seedExercise();
+    const id = await db.machines.add({ exerciseId: ex.id, name: 'Лишний', kind: 'other', step: null, factor: 1, factorSource: 'same', base: 0 });
+    const machine = await db.machines.get(id);
+    await db.machines.delete(id);
+    await tick();
+    const { push } = await collectPush(Number.MAX_SAFE_INTEGER);
+    const sent = push.machines.find(m => m.id === machine.uuid);
+    assert.ok(sent && sent.deletedAt);
 });

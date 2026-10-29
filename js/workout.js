@@ -1,11 +1,13 @@
-import { db, getBodyWeight, getRestDuration, EQUIPMENT_INFO, MOVEMENT_PATTERNS, getLocalDateString } from './db.js';
+import { db, getBodyWeight, getRestDuration, EQUIPMENT_INFO, MOVEMENT_PATTERNS, getLocalDateString, ensureMachine, getMachines } from './db.js';
 import { updateStatistics, MUSCLE_NAMES } from './stats.js';
 import { getEffectiveWeight, calculate1RM } from './core/exercise.js';
 import { getProgressionAdvice } from './core/progression.js';
 import { getBest1RM } from './core/records.js';
 import { showToast, showConfirm, switchTab } from './ui.js';
 import { syncModalLock } from './modal-lock.js';
-import { renderExercisePlan, resetPlanCache, recordProgramSessionDone, renderCycleCard } from './plan-ui.js';
+import { renderExercisePlan, resetPlanCache, recordProgramSessionDone, renderCycleCard, autoCalibrateMachines } from './plan-ui.js';
+import { renderMachineChip, openMachineModal } from './machines-ui.js';
+import { belongsToMachine, logLoad } from './core/machines.js';
 import { buildSessionSummary, showSessionSummary } from './session-summary.js';
 import { parseLocalDate } from './core/dates.js';
 
@@ -258,9 +260,14 @@ export async function onActiveExerciseChange() {
     const weightInput = document.getElementById('input-weight');
     const repsInput = document.getElementById('input-reps');
 
+    // Тренажёр: вес, шаг и коэффициент считаются отдельно для каждого, поэтому история и советы — только по текущему
+    const machines = await getMachines(exId);
+    const machine = await ensureMachine(exId, activeSession?.machineByExercise?.[exId]);
     const allLogs = await db.workoutLogs.where('exerciseId').equals(exId).toArray();
+    const machineLogs = allLogs.filter(l => belongsToMachine(l, machine, machines));
+    renderMachineChip(machine, Math.max(machines.length, 1));
     const bodyWeight = getBodyWeight();
-    const advice = getProgressionAdvice(allLogs, ex, bodyWeight);
+    const advice = getProgressionAdvice(machineLogs, ex, bodyWeight);
 
     // Подставляем вес/повторения из ЛУЧШЕГО подхода прошлой тренировки, а не из буквально
     // последнего залогированного (иначе дроп-сет или подход "на фоне плохого самочувствия" в конце
@@ -283,11 +290,31 @@ export async function updateProgressionAdvice(exerciseId) {
     const ex = exercises.find(e => e.id === exerciseId);
     if (!ex) return;
 
-    const allLogs = await db.workoutLogs.where('exerciseId').equals(exerciseId).toArray();
+    const machines = await getMachines(exerciseId);
+    const machine = await ensureMachine(exerciseId, activeSession?.machineByExercise?.[exerciseId]);
+    const allLogs = (await db.workoutLogs.where('exerciseId').equals(exerciseId).toArray())
+        .filter(l => belongsToMachine(l, machine, machines));
     const bodyWeight = getBodyWeight();
     const advice = getProgressionAdvice(allLogs, ex, bodyWeight);
 
     renderProgressionAdvice(advice, ex);
+}
+
+/** Окно выбора/добавления тренажёра для текущего упражнения. */
+export async function openMachinePicker() {
+    const select = document.getElementById('active-exercise-select');
+    const exerciseId = select ? parseInt(select.value) : NaN;
+    if (Number.isNaN(exerciseId)) return;
+    const current = await ensureMachine(exerciseId, activeSession?.machineByExercise?.[exerciseId]);
+    await openMachineModal(exerciseId, current.id, async (machineId) => {
+        if (activeSession) {
+            activeSession.machineByExercise = { ...(activeSession.machineByExercise || {}) };
+            if (machineId) activeSession.machineByExercise[exerciseId] = machineId; else delete activeSession.machineByExercise[exerciseId];
+            localStorage.setItem('active_session_anatomyfit', JSON.stringify(activeSession));
+        }
+        resetPlanCache();
+        await onActiveExerciseChange();
+    });
 }
 
 function renderProgressionAdvice(advice, ex) {
@@ -403,9 +430,12 @@ export async function saveActiveSet() {
     const ex = await db.exercises.get(exerciseId);
     const bodyWeight = getBodyWeight();
     const priorLogs = await db.workoutLogs.where('exerciseId').equals(exerciseId).toArray();
-    const priorBest1RM = ex ? getBest1RM(priorLogs, ex, bodyWeight) : 0;
+    const machine = await ensureMachine(exerciseId, activeSession?.machineByExercise?.[exerciseId]);
+    const machinesById = Object.fromEntries((await getMachines(exerciseId)).map(m => [m.id, m]));
+    // Рекорд сравнивается по эффективной нагрузке: тренажёры с разным коэффициентом не мешают друг другу
+    const priorBest1RM = ex ? getBest1RM(priorLogs, ex, bodyWeight, machinesById) : 0;
 
-    const logEntry = { date: todayStr, exerciseId, weight, reps, sessionId, comment };
+    const logEntry = { date: todayStr, exerciseId, machineId: machine.id, weight, reps, sessionId, comment };
     if (currentRir !== null) logEntry.rir = currentRir;
     await db.workoutLogs.add(logEntry);
     selectRir(null);
@@ -423,7 +453,7 @@ export async function saveActiveSet() {
 
     let isNewPR = false;
     if (ex && priorLogs.length > 0) {
-        const newEffW = getEffectiveWeight(weight, ex.usesBodyweight, bodyWeight);
+        const newEffW = getEffectiveWeight(logLoad({ weight, machineId: machine.id }, machinesById), ex.usesBodyweight, bodyWeight);
         const new1RM = calculate1RM(newEffW, reps);
         isNewPR = new1RM > priorBest1RM * 1.001;
     }
@@ -598,6 +628,16 @@ export async function finishWorkoutSession() {
     const conf = await showConfirm("Завершить текущую тренировку и сохранить всю историю?");
     if (!conf) return;
 
+    // Коэффициенты новых тренажёров рассчитываются по сделанным подходам до сборки итога
+    let calibrated = [];
+    if (activeSession) {
+        try {
+            calibrated = await autoCalibrateMachines(activeSession);
+        } catch (e) {
+            console.error('Не удалось определить коэффициент тренажёра', e);
+        }
+    }
+
     // Итог собирается до записи тренировки в цикл: план и «следующий раз» считаются по состоянию до завершения
     let summary = null;
     if (activeSession) {
@@ -620,6 +660,8 @@ export async function finishWorkoutSession() {
     showToast("Тренировка завершена! Отличная работа!", "success");
     await loadWorkoutHistory();
     releaseWakeLock();
+
+    if (calibrated.length > 0) showToast(`Коэффициент тренажёра определён: ${calibrated.join(', ')}. Его можно поправить в карточке тренажёра`, 'info');
 
     if (summary) {
         showSessionSummary(summary, () => switchTab('stats'));
@@ -1181,7 +1223,9 @@ export function addSetToEditList(exerciseId) {
         weight,
         reps,
         sessionId: editingSessionId || Date.now(),
-        comment: ''
+        comment: '',
+        // Новый подход в редактируемой тренировке — на том же тренажёре, что и предыдущий подход этого упражнения
+        ...(lastSet && lastSet.machineId != null ? { machineId: lastSet.machineId } : {})
     });
 
     renderWorkoutDetailsEditMode();
@@ -1253,7 +1297,8 @@ export async function saveWorkoutSessionEdits() {
         reps: log.reps,
         sessionId: sessionToSaveId,
         comment: log.comment || '',
-        ...(log.rir !== undefined && log.rir !== null ? { rir: log.rir } : {})
+        ...(log.rir !== undefined && log.rir !== null ? { rir: log.rir } : {}),
+        ...(log.machineId != null ? { machineId: log.machineId } : {})
     }));
 
     if (newLogs.length > 0) {
@@ -1685,6 +1730,7 @@ window.adjustValue = adjustValue;
 window.startWorkoutSession = startWorkoutSession;
 window.selectActiveExercise = selectActiveExercise;
 window.selectRir = selectRir;
+window.openMachinePicker = openMachinePicker;
 window.saveActiveSet = saveActiveSet;
 window.adjustTimer = adjustTimer;
 window.toggleTimer = toggleTimer;

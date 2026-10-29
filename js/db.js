@@ -214,6 +214,79 @@ db.version(9).stores({
     tombstones: '++id, table, uuid, deletedAt'
 });
 
+// Версия 10: тренажёры. Вес, шаг прибавки и коэффициент рычага относятся к конкретному тренажёру упражнения.
+db.version(10).stores({
+    machines: '++id, uuid, exerciseId, updatedAt, deletedAt',
+    workoutLogs: '++id, uuid, date, exerciseId, machineId, weight, reps, sessionId, comment, updatedAt, deletedAt'
+}).upgrade(async tx => {
+    // Каждому упражнению с историей — «основной» тренажёр, и все его подходы привязываются к нему
+    const now = Date.now();
+    const exercises = await tx.exercises.toArray();
+    const kindByEquipment = { cable: 'stack', lever: 'lever', barbell: 'barbell' };
+    for (const ex of exercises) {
+        const logCount = await tx.workoutLogs.where('exerciseId').equals(ex.id).count();
+        if (logCount === 0) continue;
+        const machineId = await tx.machines.add({
+            uuid: generateUUID(),
+            exerciseId: ex.id,
+            name: 'Основной',
+            kind: kindByEquipment[ex.equipment] || 'other',
+            step: null,
+            factor: 1,
+            factorSource: 'same',
+            base: 0,
+            updatedAt: now,
+        });
+        await tx.workoutLogs.where('exerciseId').equals(ex.id).modify(log => { log.machineId = machineId; });
+    }
+});
+
+db.machines.hook('creating', function (primKey, obj) {
+    if (!obj.uuid) obj.uuid = generateUUID();
+    if (!obj.updatedAt) obj.updatedAt = Date.now();
+});
+db.machines.hook('updating', function (modifications) {
+    return {
+        ...modifications,
+        updatedAt: modifications.updatedAt !== undefined ? modifications.updatedAt : Date.now()
+    };
+});
+
+/** Тренажёры упражнения (без удалённых). */
+export async function getMachines(exerciseId) {
+    const all = await db.machines.where('exerciseId').equals(exerciseId).toArray();
+    return all.filter(m => !m.deletedAt);
+}
+
+/**
+ * Тренажёр, на котором сейчас занимаются: выбранный, иначе последний с подходами, иначе первый.
+ * Если у упражнения тренажёров ещё нет, создаётся «Основной» (шаг и коэффициент — по умолчанию).
+ */
+export async function ensureMachine(exerciseId, preferredId = null) {
+    const machines = await getMachines(exerciseId);
+    if (preferredId) {
+        const preferred = machines.find(m => m.id === preferredId);
+        if (preferred) return preferred;
+    }
+    if (machines.length > 0) {
+        const logs = await db.workoutLogs.where('exerciseId').equals(exerciseId).toArray();
+        const last = logs.filter(l => l.machineId != null).sort((a, b) => (b.date + String(b.id)).localeCompare(a.date + String(a.id)))[0];
+        return machines.find(m => m.id === last?.machineId) || machines[0];
+    }
+    const exercise = await db.exercises.get(exerciseId);
+    const kindByEquipment = { cable: 'stack', lever: 'lever', barbell: 'barbell' };
+    const id = await db.machines.add({
+        exerciseId,
+        name: 'Основной',
+        kind: kindByEquipment[exercise?.equipment] || 'other',
+        step: null,
+        factor: 1,
+        factorSource: 'same',
+        base: 0,
+    });
+    return db.machines.get(id);
+}
+
 let remoteChangeDepth = 0;
 
 /** Изменения, пришедшие с сервера, не должны порождать tombstones (иначе удаление вернётся обратно на сервер). */
@@ -241,6 +314,7 @@ trackDeletions(db.exercises, 'exercises');
 trackDeletions(db.workoutLogs, 'workoutLogs');
 trackDeletions(db.programs, 'programs');
 trackDeletions(db.bodyWeightLogs, 'bodyWeightLogs');
+trackDeletions(db.machines, 'machines');
 
 // Dexie Hooks: Автоматическое присвоение UUID и updatedAt при любых созданиях/обновлениях
 db.workoutLogs.hook('creating', function (primKey, obj) {

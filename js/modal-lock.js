@@ -6,6 +6,7 @@ const MODAL_IDS = [
     'movement-picker-modal',
     'auth-modal',
     'session-summary-modal',
+    'machine-modal',
 ];
 
 /**

@@ -66,7 +66,7 @@ export function computeSetOrders(logs) {
 }
 
 /** Подход -> серверная модель; null, если упражнение неизвестно (такой подход нельзя корректно отправить). */
-export function mapLogToServer(log, exerciseIdToUUID, setOrder = 1, deletedAt = null) {
+export function mapLogToServer(log, exerciseIdToUUID, setOrder = 1, deletedAt = null, machineIdToUUID = null) {
     const exerciseId = exerciseIdToUUID.get(log.exerciseId);
     if (!exerciseId) return null;
     const updatedAt = deletedAt || log.updatedAt || Date.now();
@@ -74,6 +74,7 @@ export function mapLogToServer(log, exerciseIdToUUID, setOrder = 1, deletedAt = 
         id: log.uuid,
         sessionId: sessionUuidFromLocalId(log.sessionId),
         exerciseId,
+        machineId: machineIdToUUID ? machineIdToUUID.get(log.machineId) ?? null : null,
         setOrder,
         setType: 'normal',
         weight: log.weight,
@@ -84,6 +85,24 @@ export function mapLogToServer(log, exerciseIdToUUID, setOrder = 1, deletedAt = 
         completedAt: log.updatedAt || Date.now(),
         updatedAt,
         deletedAt,
+    };
+}
+
+/** Тренажёр -> серверная модель; null, если упражнение неизвестно (без него тренажёр на сервере не создать). */
+export function mapMachineToServer(machine, exerciseIdToUUID, deletedAt = null) {
+    const exerciseId = exerciseIdToUUID.get(machine.exerciseId);
+    if (!exerciseId || !machine.uuid) return null;
+    return {
+        id: machine.uuid,
+        exerciseId,
+        name: machine.name,
+        kind: machine.kind || 'other',
+        step: machine.step ?? null,
+        factor: machine.factor ?? 1,
+        factorSource: machine.factorSource || 'same',
+        base: machine.base || 0,
+        updatedAt: deletedAt || machine.updatedAt || Date.now(),
+        deletedAt: deletedAt || machine.deletedAt || null,
     };
 }
 

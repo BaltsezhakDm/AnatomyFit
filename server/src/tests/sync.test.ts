@@ -276,3 +276,76 @@ test('RIR подхода сохраняется и возвращается; з�
   assert.equal(sets.find(s => s.id === setId)?.rir, 2);
   assert.equal(sets.filter(s => s.rir === null).length, 1);
 });
+
+// ---------- тренажёры ----------
+
+test('тренажёр синхронизируется и возвращается в pull; подход ссылается на него', async () => {
+  const { alice, exId, sessionId } = await setup();
+  const machineId = uuid();
+  const res = await t.sync(alice, {
+    machines: [{ id: machineId, exerciseId: exId, name: 'Рычаг, зал Б', kind: 'lever', step: 5, factor: 0.3, factorSource: 'manual', base: 2, updatedAt: 10 }],
+    workoutSets: [{ id: uuid(), sessionId, exerciseId: exId, machineId, weight: 100, reps: 8, rir: 2, updatedAt: 10 }],
+  });
+  assert.deepEqual(res.json().rejected, []);
+  const pulled = (await t.sync(alice, {}, 0)).json().pull;
+  const machine = pulled.machines.find((m: { id: string }) => m.id === machineId);
+  assert.deepEqual([machine.name, machine.kind, machine.step, machine.factor, machine.factorSource, machine.baseLoad], ['Рычаг, зал Б', 'lever', 5, 0.3, 'manual', 2]);
+  assert.equal(pulled.workoutSets.find((s: { machineId: string | null }) => s.machineId === machineId).weight, 100);
+});
+
+test('тренажёр нельзя создать для чужого упражнения, для системного — можно', async () => {
+  const { bob, exId } = await setup();
+  const foreign = await t.sync(bob, { machines: [{ id: uuid(), exerciseId: exId, name: 'Чужой', factor: 1, updatedAt: 1 }] });
+  assert.equal(rejectedFor(foreign, 'machines')[0]?.reason, 'forbidden');
+
+  t.sqlite.prepare(
+    "INSERT INTO exercises (id, user_id, name, category, movement_pattern, equipment, uses_bodyweight, is_custom, muscle_loads, is_favorite, updated_at) VALUES ('sys-machine-ex', NULL, 'Sys', 'strength', 'other', 'barbell', 0, 0, '{}', 0, 1)"
+  ).run();
+  const system = await t.sync(bob, { machines: [{ id: uuid(), exerciseId: 'sys-machine-ex', name: 'Мой рычаг', factor: 0.5, updatedAt: 1 }] });
+  assert.deepEqual(system.json().rejected, []);
+});
+
+test('чужой тренажёр нельзя перезаписать (тот же id, более новый updatedAt) и использовать в своих подходах', async () => {
+  const { alice, bob, exId, sessionId } = await setup();
+  const machineId = uuid();
+  await t.sync(alice, { machines: [{ id: machineId, exerciseId: exId, name: 'Alice machine', factor: 0.3, updatedAt: 100 }] });
+
+  await t.sync(bob, { machines: [{ id: machineId, exerciseId: exId, name: 'HACKED', factor: 5, updatedAt: 9e12 }] });
+  const row = t.sqlite.prepare('SELECT name, factor FROM machines WHERE id = ?').get(machineId) as { name: string; factor: number };
+  assert.deepEqual([row.name, row.factor], ['Alice machine', 0.3]);
+
+  const bobSession = uuid();
+  t.sqlite.prepare(
+    "INSERT INTO exercises (id, user_id, name, category, movement_pattern, equipment, uses_bodyweight, is_custom, muscle_loads, is_favorite, updated_at) VALUES ('sys-ex-2', NULL, 'Sys', 'strength', 'other', 'barbell', 0, 0, '{}', 0, 1)"
+  ).run();
+  await t.sync(bob, { workoutSessions: [{ id: bobSession, updatedAt: 1 }] });
+  const stolen = await t.sync(bob, { workoutSets: [{ id: uuid(), sessionId: bobSession, exerciseId: 'sys-ex-2', machineId, weight: 1, reps: 1, updatedAt: 1 }] });
+  assert.equal(rejectedFor(stolen, 'workoutSets')[0]?.reason, 'forbidden');
+  void alice; void sessionId;
+});
+
+test('некорректный тренажёр (коэффициент вне 0.05–5, пустое имя) отклоняется, остальные строки применяются', async () => {
+  const { alice, exId } = await setup();
+  const ok = uuid();
+  const res = await t.sync(alice, {
+    machines: [
+      { id: uuid(), exerciseId: exId, name: 'Нулевой', factor: 0, updatedAt: 1 },
+      { id: uuid(), exerciseId: exId, name: 'Огромный', factor: 9, updatedAt: 1 },
+      { id: uuid(), exerciseId: exId, name: '', factor: 1, updatedAt: 1 },
+      { id: ok, exerciseId: exId, name: 'Нормальный', factor: 0.4, updatedAt: 1 },
+    ],
+  });
+  assert.equal(rejectedFor(res, 'machines').length, 3);
+  assert.ok(t.sqlite.prepare('SELECT 1 FROM machines WHERE id = ?').get(ok));
+});
+
+test('удаление тренажёра (deletedAt) доходит до pull; изменение коэффициента с тем же updatedAt применяется', async () => {
+  const { alice, exId } = await setup();
+  const id = uuid();
+  await t.sync(alice, { machines: [{ id, exerciseId: exId, name: 'M', factor: 0.3, factorSource: 'unknown', updatedAt: 100 }] });
+  await t.sync(alice, { machines: [{ id, exerciseId: exId, name: 'M', factor: 0.31, factorSource: 'auto', updatedAt: 100 }] });
+  assert.equal((t.sqlite.prepare('SELECT factor FROM machines WHERE id = ?').get(id) as { factor: number }).factor, 0.31);
+  await t.sync(alice, { machines: [{ id, exerciseId: exId, name: 'M', factor: 0.31, updatedAt: 200, deletedAt: 200 }] });
+  const pulled = (await t.sync(alice, {}, 0)).json().pull.machines.find((m: { id: string }) => m.id === id);
+  assert.equal(pulled.deletedAt, 200);
+});

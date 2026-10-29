@@ -11,6 +11,7 @@ import {
   parseMuscleLoads,
   computeSetOrders,
   mapLogToServer,
+  mapMachineToServer,
   buildSessions,
   mapProgramToServer,
   resolveProgramExerciseIds,
@@ -47,6 +48,7 @@ export async function collectPush(pushCursor) {
 
   const push = {
     exercises: [],
+    machines: [],
     programs: [],
     workoutSessions: [],
     workoutSets: [],
@@ -80,16 +82,29 @@ export async function collectPush(pushCursor) {
     push.programs.push(mapProgramToServer(t.snapshot, idToUuid, t.deletedAt));
   }
 
+  // Тренажёры уходят раньше подходов, которые на них ссылаются
+  const machines = await db.machines.toArray();
+  const machineIdToUuid = new Map(machines.filter(m => m.uuid).map(m => [m.id, m.uuid]));
+  for (const m of machines) {
+    if (!isChangedSince(m, pushCursor)) continue;
+    const mapped = mapMachineToServer(m, idToUuid);
+    if (mapped) push.machines.push(mapped);
+  }
+  for (const t of deletedOf('machines')) {
+    const mapped = mapMachineToServer(t.snapshot, idToUuid, t.deletedAt);
+    if (mapped) push.machines.push(mapped);
+  }
+
   const logs = await db.workoutLogs.toArray();
   const orders = computeSetOrders(logs);
   const changedLogs = logs.filter(l => isChangedSince(l, pushCursor));
   for (const log of changedLogs) {
-    const mapped = mapLogToServer(log, idToUuid, orders.get(log.id) || 1);
+    const mapped = mapLogToServer(log, idToUuid, orders.get(log.id) || 1, null, machineIdToUuid);
     if (mapped) push.workoutSets.push(mapped);
     else skipped++;
   }
   for (const t of deletedOf('workoutLogs')) {
-    const mapped = mapLogToServer(t.snapshot, idToUuid, 1, t.deletedAt);
+    const mapped = mapLogToServer(t.snapshot, idToUuid, 1, t.deletedAt, machineIdToUuid);
     if (mapped) push.workoutSets.push(mapped);
   }
   // Сессии нужны всем отправляемым подходам (даже если сама сессия не менялась) — иначе сервер отклонит подход
@@ -130,7 +145,7 @@ export async function applyPull(pull) {
   if (!pull) return { deferred: 0 };
 
   return withRemoteChanges(() =>
-    db.transaction('rw', db.exercises, db.programs, db.workoutLogs, db.bodyWeightLogs, async () => {
+    db.transaction('rw', db.exercises, db.machines, db.programs, db.workoutLogs, db.bodyWeightLogs, async () => {
       let deferred = 0;
 
       // Упражнения: каталог встроенных упражнений локально главный, обновляем только пользовательские
@@ -160,6 +175,38 @@ export async function applyPull(pull) {
       }
 
       const uuidToId = new Map((await db.exercises.toArray()).filter(e => e.uuid).map(e => [e.uuid, e.id]));
+
+      // Тренажёры упражнений
+      const remoteMachines = Array.isArray(pull.machines) ? pull.machines : [];
+      const machineByUuid = await existingByUuid(db.machines, remoteMachines.map(m => m.id));
+      for (const m of remoteMachines) {
+        const local = machineByUuid.get(m.id);
+        if (m.deletedAt) {
+          if (local) await db.machines.delete(local.id);
+          continue;
+        }
+        const exerciseId = uuidToId.get(m.exerciseId);
+        if (exerciseId === undefined) {
+          deferred++;
+          continue;
+        }
+        const fields = {
+          exerciseId,
+          name: m.name,
+          kind: m.kind || 'other',
+          step: m.step ?? null,
+          factor: m.factor ?? 1,
+          factorSource: m.factorSource || 'same',
+          base: m.baseLoad ?? m.base ?? 0,
+          updatedAt: m.updatedAt,
+        };
+        if (local) {
+          if (shouldApplyRemote(local, m.updatedAt)) await db.machines.update(local.id, fields);
+        } else {
+          await db.machines.add({ uuid: m.id, ...fields });
+        }
+      }
+      const uuidToMachineId = new Map((await db.machines.toArray()).filter(m => m.uuid).map(m => [m.uuid, m.id]));
 
       // Программы вместе со списком упражнений
       const remotePrograms = Array.isArray(pull.programs) ? pull.programs : [];
@@ -217,13 +264,15 @@ export async function applyPull(pull) {
           continue;
         }
         const exerciseId = uuidToId.get(s.exerciseId);
-        if (exerciseId === undefined) {
-          deferred++;
+        const machineId = s.machineId ? uuidToMachineId.get(s.machineId) : undefined;
+        if (exerciseId === undefined || (s.machineId && machineId === undefined)) {
+          deferred++; // упражнение или тренажёр ещё не загружены — подход применится при следующем синке
           continue;
         }
         const fields = {
           date: s.logDate,
           exerciseId,
+          ...(machineId !== undefined ? { machineId } : {}),
           weight: s.weight,
           reps: s.reps,
           comment: s.comment,

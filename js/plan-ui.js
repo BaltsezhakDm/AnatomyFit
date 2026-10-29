@@ -11,6 +11,7 @@ import {
     shouldSuggestAdvance, nextOpenSetIndex, DEFAULT_SESSIONS_PER_WEEK, DEFAULT_MESOCYCLE_WEEKS,
 } from './core/planner.js';
 import { plateauAdvice } from './core/trends.js';
+import { factorEstimateFor, applyFactorEstimate } from './machines-ui.js';
 
 function escapeHtml(str) {
     return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -28,7 +29,7 @@ export function formatWeight(weight, exercise) {
 }
 
 /** План программы на сегодня + контекст (упражнения, цикл). Цикл не сохраняется, пока пользователь не меняет неделю. */
-export async function loadProgramPlan(programId, { today = getLocalDateString(), cycle = null } = {}) {
+export async function loadProgramPlan(programId, { today = getLocalDateString(), cycle = null, selectedMachineByExercise = {} } = {}) {
     const program = await db.programs.get(programId);
     if (!program) return null;
 
@@ -41,8 +42,13 @@ export async function loadProgramPlan(programId, { today = getLocalDateString(),
     for (const log of logs) (logsByExerciseId[log.exerciseId] ||= []).push(log);
 
     const activeCycle = cycle || program.cycle || defaultCycle(today, { weeks: program.cycleWeeks || DEFAULT_MESOCYCLE_WEEKS });
-    const plan = planSession({ program, exercisesById, logsByExerciseId, bodyWeight: getBodyWeight(), today, cycle: activeCycle });
-    return { program, plan, exercisesById, today };
+    const machines = (await db.machines.toArray()).filter(m => !m.deletedAt);
+    const machinesById = Object.fromEntries(machines.map(m => [m.id, m]));
+    const plan = planSession({
+        program, exercisesById, logsByExerciseId, bodyWeight: getBodyWeight(), today, cycle: activeCycle,
+        machines, selectedMachineByExercise,
+    });
+    return { program, plan, exercisesById, machinesById, today };
 }
 
 async function saveCycle(programId, cycle) {
@@ -205,14 +211,15 @@ export async function recordProgramSessionDone(programId) {
 
 let planCache = null; // { programId, data }
 let planContext = null; // { exercise, entry, doneCount }
+let lastRender = null; // аргументы последнего renderExercisePlan — для перерисовки после смены коэффициента
 
 export function resetPlanCache() {
     planCache = null;
 }
 
-async function cachedPlan(programId) {
+async function cachedPlan(programId, selectedMachineByExercise) {
     if (!planCache || planCache.programId !== programId) {
-        planCache = { programId, data: await loadProgramPlan(programId) };
+        planCache = { programId, data: await loadProgramPlan(programId, { selectedMachineByExercise }) };
     }
     return planCache.data;
 }
@@ -237,7 +244,8 @@ export async function renderExercisePlan(session, exerciseId, { autoFill = false
         setPlanVisible(false);
         return;
     }
-    const data = await cachedPlan(session.id);
+    lastRender = { session, exerciseId };
+    const data = await cachedPlan(session.id, session.machineByExercise || {});
     const entry = data?.plan.exercises.find(e => e.exerciseId === exerciseId);
     if (!entry) {
         setPlanVisible(false);
@@ -248,6 +256,8 @@ export async function renderExercisePlan(session, exerciseId, { autoFill = false
     const done = (await db.workoutLogs.where('sessionId').equals(session.sessionId).toArray())
         .filter(l => l.exerciseId === exerciseId)
         .sort((a, b) => a.id - b.id);
+    const machine = data.machinesById[entry.machineId] || null;
+    const estimate = factorEstimateFor(machine, entry, done.filter(l => l.machineId === machine?.id), exercise);
     const nextIndex = nextOpenSetIndex(entry.sets, done.length);
     planContext = { exercise, entry, doneCount: done.length, nextIndex };
 
@@ -269,10 +279,18 @@ export async function renderExercisePlan(session, exerciseId, { autoFill = false
     }).join('');
 
     const hint = entry.status === 'needs_baseline'
-        ? `Нет истории: подберите вес на <strong>${entry.targetReps} повт.</strong> с запасом ${entry.rir} повт. — со следующего раза цели посчитаются сами.`
+        ? (entry.hasReference
+            ? `Новый тренажёр: подберите вес на <strong>${entry.targetReps} повт.</strong> с запасом ${entry.rir} повт. Соотношение с прежним тренажёром определится по этим подходам.`
+            : `Нет истории: подберите вес на <strong>${entry.targetReps} повт.</strong> с запасом ${entry.rir} повт. — со следующего раза цели посчитаются сами.`)
         : entry.note ? escapeHtml(entry.note) : '';
+    const estimateHtml = estimate
+        ? `<div class="text-[11px] bg-brand/10 border border-brand/25 rounded-lg px-2 py-1.5 flex items-center justify-between gap-2">
+            <span class="text-zinc-200">Оценка коэффициента тренажёра: <strong class="font-mono">×${estimate.factor}</strong> (по ${estimate.sets} подх.)</span>
+            <button onclick="window.acceptFactorEstimate(${machine.id}, ${estimate.factor})" class="text-brand font-bold whitespace-nowrap">Принять</button>
+        </div>`
+        : '';
 
-    const canApply = nextIndex !== null && entry.status === 'planned';
+    const canApply = nextIndex !== null && (entry.status === 'planned' || entry.status === 'estimated');
     setPlanVisible(true);
     setWeightStepButtons(entry.step);
     const stepSource = { slot: 'задан в программе', history: 'по вашей истории', default: 'по умолчанию для оборудования' }[entry.stepSource];
@@ -286,6 +304,7 @@ export async function renderExercisePlan(session, exerciseId, { autoFill = false
         </div>
         <div class="space-y-1">${rows}</div>
         ${hint ? `<p class="text-[11px] text-zinc-400">${hint}</p>` : ''}
+        ${estimateHtml}
         ${nextIndex === null ? '<p class="text-[11px] text-brand font-semibold">План по этому упражнению выполнен 🎉</p>' : ''}
         ${canApply ? `<button onclick="window.applyPlanTarget()" class="w-full bg-brand/10 hover:bg-brand/20 text-brand text-xs font-bold py-2 rounded-lg transition flex items-center justify-center gap-1.5">
             <i data-lucide="corner-down-right" class="w-3.5 h-3.5"></i> Подставить цель (подход ${nextIndex + 1})
@@ -319,7 +338,37 @@ export function applyPlanTarget({ silent = false } = {}) {
     if (!silent) showToast(`Подставлено: ${formatWeight(set.weight, exercise)} × ${set.reps}`, 'info');
 }
 
+/** «Принять» оценку коэффициента: план пересчитывается по новому коэффициенту. */
+export async function acceptFactorEstimate(machineId, factor) {
+    await applyFactorEstimate(machineId, factor);
+    resetPlanCache();
+    if (lastRender) await renderExercisePlan(lastRender.session, lastRender.exerciseId);
+}
+
+/**
+ * При завершении тренировки: коэффициенты тренажёров, которые были «определить по первой тренировке», рассчитываются
+ * автоматически по сделанным подходам (их можно поправить вручную в карточке тренажёра).
+ * @returns {Promise<string[]>} описания применённых оценок для сообщения пользователю
+ */
+export async function autoCalibrateMachines(session) {
+    if (!session || session.type !== 'routine' || !session.id) return [];
+    const data = await cachedPlan(session.id, session.machineByExercise || {});
+    if (!data) return [];
+    const logs = await db.workoutLogs.where('sessionId').equals(session.sessionId).toArray();
+    const applied = [];
+    for (const entry of data.plan.exercises) {
+        const machine = data.machinesById[entry.machineId];
+        const estimate = factorEstimateFor(machine, entry, logs.filter(l => l.exerciseId === entry.exerciseId && l.machineId === machine?.id), data.exercisesById[entry.exerciseId]);
+        if (!estimate) continue;
+        await applyFactorEstimate(machine.id, estimate.factor, { silent: true });
+        applied.push(`${machine.name}: ×${estimate.factor}`);
+    }
+    if (applied.length > 0) resetPlanCache();
+    return applied;
+}
+
 window.renderCycleCard = renderCycleCard;
+window.acceptFactorEstimate = acceptFactorEstimate;
 window.advanceProgramWeek = advanceProgramWeek;
 window.repeatProgramWeek = repeatProgramWeek;
 window.postponeProgramDeload = postponeProgramDeload;

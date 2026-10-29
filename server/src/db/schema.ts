@@ -159,6 +159,32 @@ export const workoutSessions = sqliteTable('workout_sessions', {
   userStartedIdx: index('workout_sessions_user_started_idx').on(table.userId, table.startedAt),
 }));
 
+// ----------------------------------------------------
+// ТРЕНАЖЁРЫ УПРАЖНЕНИЙ (шаг прибавки и коэффициент рычага — отдельно для каждого)
+// ----------------------------------------------------
+
+export const machines = sqliteTable('machines', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  exerciseId: text('exercise_id')
+    .notNull()
+    .references(() => exercises.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  kind: text('kind', { enum: ['stack', 'lever', 'plates', 'barbell', 'other'] }).default('other').notNull(),
+  step: real('step'), // шаг прибавки в навешенных кг; NULL — определять по истории
+  factor: real('factor').default(1).notNull(), // эффективная нагрузка = base + factor × навешенный вес
+  factorSource: text('factor_source', { enum: ['unknown', 'same', 'manual', 'auto'] }).default('same').notNull(),
+  baseLoad: real('base_load').default(0).notNull(), // вес каретки без блинов
+  updatedAt: integer('updated_at').notNull(),
+  // Серверное время последнего применения изменения: курсор для pull, не зависит от часов клиентов
+  syncedAt: integer('synced_at').default(0).notNull(),
+  deletedAt: integer('deleted_at'),
+}, (table) => ({
+  userExerciseIdx: index('machines_user_exercise_idx').on(table.userId, table.exerciseId),
+}));
+
 export const workoutSets = sqliteTable('workout_sets', {
   id: text('id').primaryKey(),
   userId: text('user_id')
@@ -180,6 +206,7 @@ export const workoutSets = sqliteTable('workout_sets', {
   reps: integer('reps').notNull(),
   rpe: real('rpe'), // Rate of Perceived Exertion (6.0 - 10.0)
   rir: integer('rir'), // Reps In Reserve (0, 1, 2, 3...)
+  machineId: text('machine_id').references(() => machines.id, { onDelete: 'set null' }), // тренажёр, на котором сделан подход
   comment: text('comment'),
   logDate: text('log_date').notNull(), // 'YYYY-MM-DD'
   completedAt: integer('completed_at').notNull(), // Unix timestamp (ms)

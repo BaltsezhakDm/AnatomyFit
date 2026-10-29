@@ -15,6 +15,7 @@ import {
     chunk,
     buildPlanPayload,
     resolvePlan,
+    mapMachineToServer,
 } from '../js/core/sync-mapping.js';
 import { formatLocalDate, parseLocalDate } from '../js/core/dates.js';
 
@@ -155,4 +156,23 @@ test('план: без слотов, цикла и настроек — null; о
     assert.equal(buildPlanPayload({ exerciseIds: [1] }, new Map([[1, 'u1']])), null);
     assert.equal(buildPlanPayload({ exerciseIds: [], cycleWeeks: 6 }, new Map()).cycleWeeks, 6);
     assert.equal(resolvePlan(null, new Map()), null);
+});
+
+test('тренажёр -> серверная модель: шаг, коэффициент, каретка; без известного упражнения не отправляется', () => {
+    const map = new Map([[1, 'ex-1']]);
+    const machine = { uuid: 'm-1', exerciseId: 1, name: 'Рычаг, зал Б', kind: 'lever', step: 5, factor: 0.3, factorSource: 'manual', base: 2, updatedAt: 10 };
+    assert.deepEqual(mapMachineToServer(machine, map), {
+        id: 'm-1', exerciseId: 'ex-1', name: 'Рычаг, зал Б', kind: 'lever', step: 5, factor: 0.3, factorSource: 'manual', base: 2, updatedAt: 10, deletedAt: null,
+    });
+    assert.equal(mapMachineToServer({ ...machine, exerciseId: 99 }, map), null);
+    const deleted = mapMachineToServer({ ...machine, step: null, kind: undefined, base: undefined }, map, 500);
+    assert.deepEqual([deleted.deletedAt, deleted.updatedAt, deleted.step, deleted.kind, deleted.base], [500, 500, null, 'other', 0]);
+});
+
+test('подход несёт UUID своего тренажёра (или null)', () => {
+    const exercises = new Map([[1, 'ex-1']]);
+    const machines = new Map([[7, 'm-7']]);
+    assert.equal(mapLogToServer({ uuid: 'l', exerciseId: 1, machineId: 7, sessionId: 1792787442600, weight: 1, reps: 1 }, exercises, 1, null, machines).machineId, 'm-7');
+    assert.equal(mapLogToServer({ uuid: 'l', exerciseId: 1, sessionId: 1792787442600, weight: 1, reps: 1 }, exercises, 1, null, machines).machineId, null);
+    assert.equal(mapLogToServer({ uuid: 'l', exerciseId: 1, machineId: 7, sessionId: 1792787442600, weight: 1, reps: 1 }, exercises).machineId, null);
 });

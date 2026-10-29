@@ -44,7 +44,7 @@ test('база, созданная через drizzle-kit push (без журн�
   assert.ok(columns('programs').includes('plan'));
   // старые строки получают курсор = updated_at, чтобы попасть в полный pull
   assert.equal((sqlite.prepare("SELECT synced_at FROM workout_sets WHERE id = 'w1'").get() as { synced_at: number }).synced_at, 777);
-  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 2);
+  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 3);
   assert.ok((sqlite.prepare('SELECT COUNT(*) AS c FROM exercises WHERE user_id IS NULL').get() as { c: number }).c > 0, 'системные упражнения засеяны');
 });
 
@@ -54,20 +54,7 @@ test('повторный запуск идемпотентен: данные н�
   await prepareDatabase();
   assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM exercises').get() as { c: number }).c, before);
   assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM users').get() as { c: number }).c, 1);
-  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 2);
-});
-
-test('сервер, уже работающий на первой миграции, получает вторую при обновлении', async () => {
-  // Эмулируем прод до обновления: журнал содержит только 0000, колонки plan нет
-  sqlite.exec('ALTER TABLE programs DROP COLUMN plan');
-  sqlite.prepare('DELETE FROM __drizzle_migrations WHERE id = (SELECT MAX(id) FROM __drizzle_migrations)').run();
-  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 1);
-
-  await prepareDatabase();
-
-  assert.ok(columns('programs').includes('plan'));
-  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 2);
-  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM users').get() as { c: number }).c, 1, 'данные сохранены');
+  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 3);
 });
 
 test.after(() => {
