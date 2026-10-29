@@ -116,6 +116,9 @@ const rowSchemas = {
     startedAt: timestamp,
     endedAt: timestamp,
     feeling: optNum,
+    readinessPre: z.number().int().min(1).max(5).nullish(),
+    feelingPost: z.number().int().min(1).max(5).nullish(),
+    preTags: z.array(z.string().min(1).max(20)).max(10).nullish(),
     totalDurationSec: optNum,
     comment: text,
     updatedAt: timestamp,
@@ -419,8 +422,8 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       const upsertSession = sqlite.prepare(`
         INSERT INTO workout_sessions (
           id, user_id, program_day_id, name, session_type, started_at,
-          ended_at, feeling, total_duration_sec, comment, updated_at, synced_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ended_at, feeling, readiness_pre, feeling_post, pre_tags, total_duration_sec, comment, updated_at, synced_at, deleted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           program_day_id = excluded.program_day_id,
           name = excluded.name,
@@ -428,6 +431,10 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
           started_at = excluded.started_at,
           ended_at = excluded.ended_at,
           feeling = excluded.feeling,
+          -- оценки самочувствия не затираются клиентом, который их не передал (старая версия)
+          readiness_pre = COALESCE(excluded.readiness_pre, workout_sessions.readiness_pre),
+          feeling_post = COALESCE(excluded.feeling_post, workout_sessions.feeling_post),
+          pre_tags = COALESCE(excluded.pre_tags, workout_sessions.pre_tags),
           total_duration_sec = excluded.total_duration_sec,
           comment = excluded.comment,
           updated_at = excluded.updated_at,
@@ -446,6 +453,9 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
           ws.startedAt || serverTimestamp,
           ws.endedAt || null,
           ws.feeling || null,
+          ws.readinessPre ?? null,
+          ws.feelingPost ?? null,
+          ws.preTags && ws.preTags.length > 0 ? JSON.stringify(ws.preTags) : null,
           ws.totalDurationSec || null,
           ws.comment || null,
           ws.updatedAt || serverTimestamp,
@@ -618,7 +628,10 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         programDays: pullProgramDays,
         programExercises: pullProgramExercises,
         machines: pullMachines,
-        workoutSessions: pullWorkoutSessions,
+        workoutSessions: pullWorkoutSessions.map(ws => ({
+          ...ws,
+          preTags: ws.preTags ? (JSON.parse(ws.preTags) as string[]) : [],
+        })),
         workoutSets: pullWorkoutSets,
         bodyMeasurements: pullMeasurements,
         settings: userSetts,

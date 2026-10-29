@@ -7,6 +7,7 @@ const MODAL_IDS = [
     'auth-modal',
     'session-summary-modal',
     'machine-modal',
+    'readiness-modal',
 ];
 
 /**

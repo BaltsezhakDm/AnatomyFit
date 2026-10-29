@@ -107,14 +107,23 @@ export function mapMachineToServer(machine, exerciseIdToUUID, deletedAt = null) 
 }
 
 /** Сессии для отправляемых подходов; updatedAt сессии выводится из её подходов, поэтому повторная отправка идемпотентна. */
-export function buildSessions(sessionLogs) {
+export function buildSessions(sessionLogs, metaBySessionId = null) {
     const sessions = new Map();
     for (const log of sessionLogs) {
         const id = sessionUuidFromLocalId(log.sessionId);
         const startedAt = Number(log.sessionId) > 0 ? Number(log.sessionId) : (log.updatedAt || Date.now());
         const existing = sessions.get(id);
-        const updatedAt = Math.max(existing?.updatedAt || 0, log.updatedAt || 0);
-        sessions.set(id, { id, name: 'Тренировка', sessionType: 'free', startedAt, endedAt: startedAt, updatedAt });
+        const meta = metaBySessionId ? metaBySessionId.get(Number(log.sessionId)) : null;
+        const updatedAt = Math.max(existing?.updatedAt || 0, log.updatedAt || 0, meta?.updatedAt || 0);
+        const session = { id, name: 'Тренировка', sessionType: 'free', startedAt, endedAt: startedAt, updatedAt };
+        // Самочувствие до/после и причины едут вместе с сессией; пустые значения не отправляются
+        if (meta) {
+            if (meta.readinessPre != null) session.readinessPre = meta.readinessPre;
+            if (meta.feelingPost != null) session.feelingPost = meta.feelingPost;
+            if (meta.preTags && meta.preTags.length > 0) session.preTags = meta.preTags;
+            if (meta.note) session.comment = meta.note;
+        }
+        sessions.set(id, session);
     }
     return [...sessions.values()];
 }

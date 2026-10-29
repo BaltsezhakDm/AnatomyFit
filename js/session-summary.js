@@ -3,11 +3,13 @@
  * Данные собирает summarizeSession (core/summary.js), здесь — чтение БД и разметка.
  */
 
-import { db, getBodyWeight, getLocalDateString } from './db.js';
+import { db, getBodyWeight, getLocalDateString, getSessionMeta } from './db.js';
 import { summarizeSession } from './core/summary.js';
 import { advanceCycle, defaultCycle, DEFAULT_SESSIONS_PER_WEEK, DEFAULT_MESOCYCLE_WEEKS } from './core/planner.js';
 import { loadProgramPlan, formatWeight } from './plan-ui.js';
 import { syncModalLock } from './modal-lock.js';
+import { postFeelingHtml } from './readiness-ui.js';
+import { READINESS_LABELS, READINESS_TAGS } from './core/readiness.js';
 
 let onCloseCallback = null;
 
@@ -59,11 +61,15 @@ export async function buildSessionSummary(session) {
 
     const isRoutine = session.type === 'routine' && session.id;
     // План, по которому шла тренировка: сегодняшние подходы в историю не входят, поэтому он стабилен
-    const planData = isRoutine ? await loadProgramPlan(session.id, { selectedMachineByExercise: session.machineByExercise || {} }) : null;
+    const planData = isRoutine ? await loadProgramPlan(session.id, { selectedMachineByExercise: session.machineByExercise || {}, session }) : null;
     const nextByExercise = await computeNextTargets(session, planData);
     const machinesById = Object.fromEntries((await db.machines.toArray()).map(m => [m.id, m]));
 
+    const meta = await getSessionMeta(session.sessionId);
+
     return {
+        sessionId: session.sessionId,
+        meta,
         sessionName: session.name,
         weekInfo: planData ? planData.plan.profile : null,
         ...summarizeSession({
@@ -105,6 +111,12 @@ export function renderSessionSummary(summary) {
             <div class="text-[9px] uppercase tracking-wide text-zinc-500 font-semibold">${label}</div>
         </div>`;
 
+    const pre = summary.meta?.readinessPre;
+    const tags = (summary.meta?.preTags || []).map(t => READINESS_TAGS[t]).filter(Boolean);
+    const preHtml = pre
+        ? `<div class="text-[11px] text-zinc-400">Самочувствие до тренировки: <strong class="text-zinc-200">${pre}/5 — ${escapeHtml(READINESS_LABELS[pre])}</strong>${tags.length ? ` (${escapeHtml(tags.join(', '))})` : ''}</div>`
+        : '';
+
     const plan = summary.plannedSets
         ? `<div class="text-[11px] text-zinc-400">План недели ${summary.weekInfo.week}/${summary.weekInfo.weeks}${summary.weekInfo.isDeload ? ' (разгрузка)' : ''}: выполнено ${summary.hitSets} из ${summary.hitSets + summary.belowSets} оценённых подходов${summary.belowSets ? `, ${summary.belowSets} ниже цели` : ''}. Подходов сделано ${summary.totalSets} из ${summary.plannedSets}.</div>`
         : '';
@@ -131,6 +143,8 @@ export function renderSessionSummary(summary) {
 
     body.innerHTML = `
         <div class="text-[10px] uppercase tracking-wider font-extrabold text-zinc-500">${escapeHtml(summary.sessionName || '')}</div>
+        ${preHtml}
+        ${postFeelingHtml(summary.sessionId, summary.meta?.feelingPost ?? null, summary.meta?.note)}
         <div class="grid grid-cols-3 gap-2">
             ${stat('Минут', summary.durationMin)}
             ${stat('Подходов', summary.totalSets)}

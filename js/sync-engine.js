@@ -108,10 +108,14 @@ export async function collectPush(pushCursor) {
     if (mapped) push.workoutSets.push(mapped);
   }
   // Сессии нужны всем отправляемым подходам (даже если сама сессия не менялась) — иначе сервер отклонит подход
+  // Оценка «после» ставится уже после последнего подхода: сессия с изменившимися метаданными отправляется заново
+  const metas = await db.sessionMeta.toArray();
+  const metaBySessionId = new Map(metas.map(m => [m.sessionId, m]));
   const sentSessionKeys = new Set(
     changedLogs.filter(l => idToUuid.has(l.exerciseId)).map(l => l.sessionId || null)
   );
-  push.workoutSessions = buildSessions(logs.filter(l => sentSessionKeys.has(l.sessionId || null)));
+  for (const m of metas) if (isChangedSince(m, pushCursor)) sentSessionKeys.add(m.sessionId);
+  push.workoutSessions = buildSessions(logs.filter(l => sentSessionKeys.has(l.sessionId || null)), metaBySessionId);
 
   const weights = await db.bodyWeightLogs.toArray();
   const measurement = (bw, deletedAt = null) => ({
@@ -145,7 +149,7 @@ export async function applyPull(pull) {
   if (!pull) return { deferred: 0 };
 
   return withRemoteChanges(() =>
-    db.transaction('rw', db.exercises, db.machines, db.programs, db.workoutLogs, db.bodyWeightLogs, async () => {
+    db.transaction('rw', db.exercises, db.machines, db.programs, db.workoutLogs, db.bodyWeightLogs, db.sessionMeta, async () => {
       let deferred = 0;
 
       // Упражнения: каталог встроенных упражнений локально главный, обновляем только пользовательские
@@ -252,6 +256,25 @@ export async function applyPull(pull) {
         } else {
           await db.bodyWeightLogs.add({ uuid: bm.id, date: bm.logDate, weight: bm.weight, updatedAt: bm.updatedAt });
         }
+      }
+
+      // Самочувствие до/после: метаданные сессий (сами сессии локально — набор подходов)
+      const remoteSessions = Array.isArray(pull.workoutSessions) ? pull.workoutSessions : [];
+      for (const ws of remoteSessions) {
+        const hasMeta = ws.readinessPre != null || ws.feelingPost != null || (ws.preTags && ws.preTags.length > 0);
+        const sessionId = localSessionIdFromUuid(ws.id);
+        if (!hasMeta || sessionId === null) continue;
+        const local = await db.sessionMeta.where('sessionId').equals(sessionId).first();
+        if (local && !shouldApplyRemote(local, ws.updatedAt)) continue;
+        const fields = {
+          readinessPre: ws.readinessPre ?? null,
+          feelingPost: ws.feelingPost ?? null,
+          preTags: ws.preTags || [],
+          note: ws.comment || null,
+          updatedAt: ws.updatedAt,
+        };
+        if (local) await db.sessionMeta.update(local.id, fields);
+        else await db.sessionMeta.add({ sessionId, ...fields });
       }
 
       // Подходы: sessionId восстанавливается из UUID сессии, неизвестное упражнение откладывает строку

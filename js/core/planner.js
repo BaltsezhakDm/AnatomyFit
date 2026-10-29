@@ -14,6 +14,7 @@ import { calculate1RM, getEffectiveWeight } from './exercise.js';
 import { getProgressionAdvice } from './progression.js';
 import { detectPlateau } from './trends.js';
 import { loadOf, plateOf, belongsToMachine, oneRMOfSet, pickReference } from './machines.js';
+import { adaptationFor, applyAdaptation } from './readiness.js';
 
 export const DEFAULT_MESOCYCLE_WEEKS = 5;
 /** Сдвиг диапазона повторений основных движений по номеру мезоцикла (по кругу). */
@@ -294,7 +295,9 @@ export function planExercise({ slot, exercise, machine = null, logs, bodyWeight,
     const range = repRangeFor(slot, cycleIndex, inferRepRange(sessions) || repRangeHint);
     const targetReps = range.min + Math.round((range.max - range.min) / 2);
     const rir = profile.rir;
-    const setCount = Math.max(1, Math.round(slot.sets * profile.volume));
+    // При поправке на самочувствие объём округляется вниз: иначе «×0.8» от 4 подходов давало бы те же 4
+    const rawSets = slot.sets * profile.volume;
+    const setCount = Math.max(1, profile.adjusted ? Math.floor(rawSets + 1e-9) : Math.round(rawSets));
     const grid = inferWeightGrid(logs);
     // Шаг в навешенных кг: слот программы -> заданный на тренажёре -> по истории тренажёра -> по оборудованию
     const manualStep = slot.step || machine?.step || null;
@@ -373,9 +376,12 @@ export function planExercise({ slot, exercise, machine = null, logs, bodyWeight,
  * План тренировки по программе на сегодня.
  * @param {{ program: object, exercisesById: object, logsByExerciseId: object, bodyWeight: number, today: string, cycle?: object }} input
  */
-export function planSession({ program, exercisesById, logsByExerciseId, bodyWeight, today, cycle, machines = [], selectedMachineByExercise = {} }) {
+export function planSession({ program, exercisesById, logsByExerciseId, bodyWeight, today, cycle, machines = [], selectedMachineByExercise = {}, readiness = null, readinessTags = [], recentPostFeelings = [], adaptationOff = false }) {
     const activeCycle = cycle || program.cycle || defaultCycle(today);
-    const profile = weekProfile(activeCycle.week, activeCycle.weeks);
+    const weekly = weekProfile(activeCycle.week, activeCycle.weeks);
+    // Самочувствие: мягкое снижение нагрузки (отключается пользователем); на разгрузке поправка не накладывается
+    const adaptation = adaptationFor({ readiness, tags: readinessTags, recentPost: recentPostFeelings, isDeload: weekly.isDeload });
+    const profile = adaptationOff ? weekly : applyAdaptation(weekly, adaptation);
     const slots = normalizeSlots(program, exercisesById);
 
     const machinesByExercise = new Map();
@@ -413,6 +419,8 @@ export function planSession({ program, exercisesById, logsByExerciseId, bodyWeig
         programId: program.id,
         cycle: activeCycle,
         profile,
+        weeklyProfile: weekly,
+        adaptation: adaptation.active || adaptation.hints.length > 0 ? { ...adaptation, off: adaptationOff } : null,
         exercises,
         fatigue: !profile.isDeload && fatigueSignal(history),
     };

@@ -4,13 +4,14 @@
  * Ничего не подставляется в поля ввода без нажатия кнопки пользователем.
  */
 
-import { db, getBodyWeight, getLocalDateString } from './db.js';
+import { db, getBodyWeight, getLocalDateString, getRecentPostFeelings } from './db.js';
 import { showToast, showConfirm } from './ui.js';
 import {
     planSession, defaultCycle, advanceCycle, jumpToDeload, weekProfile, repeatWeek, restartCycle, postponeDeload,
     shouldSuggestAdvance, nextOpenSetIndex, DEFAULT_SESSIONS_PER_WEEK, DEFAULT_MESOCYCLE_WEEKS,
 } from './core/planner.js';
 import { plateauAdvice } from './core/trends.js';
+import { describeAdaptation } from './core/readiness.js';
 import { factorEstimateFor, applyFactorEstimate } from './machines-ui.js';
 
 function escapeHtml(str) {
@@ -29,7 +30,7 @@ export function formatWeight(weight, exercise) {
 }
 
 /** План программы на сегодня + контекст (упражнения, цикл). Цикл не сохраняется, пока пользователь не меняет неделю. */
-export async function loadProgramPlan(programId, { today = getLocalDateString(), cycle = null, selectedMachineByExercise = {} } = {}) {
+export async function loadProgramPlan(programId, { today = getLocalDateString(), cycle = null, selectedMachineByExercise = {}, session = null } = {}) {
     const program = await db.programs.get(programId);
     if (!program) return null;
 
@@ -47,6 +48,11 @@ export async function loadProgramPlan(programId, { today = getLocalDateString(),
     const plan = planSession({
         program, exercisesById, logsByExerciseId, bodyWeight: getBodyWeight(), today, cycle: activeCycle,
         machines, selectedMachineByExercise,
+        // Самочувствие: оценка «до» сегодня и «после» прошлых тренировок мягко корректируют план
+        readiness: session?.readiness ?? null,
+        readinessTags: session?.readinessTags || [],
+        adaptationOff: !!session?.adaptationOff,
+        recentPostFeelings: await getRecentPostFeelings(3, session?.sessionId ?? null),
     });
     return { program, plan, exercisesById, machinesById, today };
 }
@@ -217,9 +223,9 @@ export function resetPlanCache() {
     planCache = null;
 }
 
-async function cachedPlan(programId, selectedMachineByExercise) {
+async function cachedPlan(programId, session) {
     if (!planCache || planCache.programId !== programId) {
-        planCache = { programId, data: await loadProgramPlan(programId, { selectedMachineByExercise }) };
+        planCache = { programId, data: await loadProgramPlan(programId, { selectedMachineByExercise: session?.machineByExercise || {}, session }) };
     }
     return planCache.data;
 }
@@ -245,7 +251,7 @@ export async function renderExercisePlan(session, exerciseId, { autoFill = false
         return;
     }
     lastRender = { session, exerciseId };
-    const data = await cachedPlan(session.id, session.machineByExercise || {});
+    const data = await cachedPlan(session.id, session);
     const entry = data?.plan.exercises.find(e => e.exerciseId === exerciseId);
     if (!entry) {
         setPlanVisible(false);
@@ -290,6 +296,17 @@ export async function renderExercisePlan(session, exerciseId, { autoFill = false
         </div>`
         : '';
 
+    const adaptation = data.plan.adaptation;
+    const adaptationText = adaptation && adaptation.active ? describeAdaptation(adaptation) : null;
+    const adaptationHtml = adaptation
+        ? `${adaptation.active
+            ? (adaptation.off
+                ? `<div class="text-[11px] bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 flex items-center justify-between gap-2"><span class="text-zinc-400">Поправка на самочувствие отключена</span><button onclick="window.toggleAdaptation()" class="text-brand font-bold whitespace-nowrap">Вернуть</button></div>`
+                : `<div class="text-[11px] bg-amber-500/10 border border-amber-500/25 rounded-lg px-2 py-1.5 flex items-center justify-between gap-2"><span class="text-amber-100">Поправка на самочувствие — ${escapeHtml(adaptationText)}</span><button onclick="window.toggleAdaptation()" class="text-amber-300 font-bold whitespace-nowrap">Отменить</button></div>`)
+            : ''}
+           ${adaptation.hints.map(h => `<div class="text-[11px] text-zinc-400">💡 ${escapeHtml(h)}</div>`).join('')}`
+        : '';
+
     const canApply = nextIndex !== null && (entry.status === 'planned' || entry.status === 'estimated');
     setPlanVisible(true);
     setWeightStepButtons(entry.step);
@@ -303,6 +320,7 @@ export async function renderExercisePlan(session, exerciseId, { autoFill = false
             <span class="text-[10px] text-zinc-500 font-mono" title="Шаг веса ${stepSource}">${entry.range.min}–${entry.range.max} повт. · шаг ${entry.step} кг</span>
         </div>
         <div class="space-y-1">${rows}</div>
+        ${adaptationHtml}
         ${hint ? `<p class="text-[11px] text-zinc-400">${hint}</p>` : ''}
         ${estimateHtml}
         ${nextIndex === null ? '<p class="text-[11px] text-brand font-semibold">План по этому упражнению выполнен 🎉</p>' : ''}
@@ -338,6 +356,16 @@ export function applyPlanTarget({ silent = false } = {}) {
     if (!silent) showToast(`Подставлено: ${formatWeight(set.weight, exercise)} × ${set.reps}`, 'info');
 }
 
+/** Отмена/возврат поправки на самочувствие: план пересчитывается, выбор сохраняется в активной тренировке. */
+export async function toggleAdaptation() {
+    if (!lastRender) return;
+    const { session, exerciseId } = lastRender;
+    session.adaptationOff = !session.adaptationOff;
+    localStorage.setItem('active_session_anatomyfit', JSON.stringify(session));
+    resetPlanCache();
+    await renderExercisePlan(session, exerciseId);
+}
+
 /** «Принять» оценку коэффициента: план пересчитывается по новому коэффициенту. */
 export async function acceptFactorEstimate(machineId, factor) {
     await applyFactorEstimate(machineId, factor);
@@ -352,7 +380,7 @@ export async function acceptFactorEstimate(machineId, factor) {
  */
 export async function autoCalibrateMachines(session) {
     if (!session || session.type !== 'routine' || !session.id) return [];
-    const data = await cachedPlan(session.id, session.machineByExercise || {});
+    const data = await cachedPlan(session.id, session);
     if (!data) return [];
     const logs = await db.workoutLogs.where('sessionId').equals(session.sessionId).toArray();
     const applied = [];
@@ -369,6 +397,7 @@ export async function autoCalibrateMachines(session) {
 
 window.renderCycleCard = renderCycleCard;
 window.acceptFactorEstimate = acceptFactorEstimate;
+window.toggleAdaptation = toggleAdaptation;
 window.advanceProgramWeek = advanceProgramWeek;
 window.repeatProgramWeek = repeatProgramWeek;
 window.postponeProgramDeload = postponeProgramDeload;

@@ -1497,6 +1497,29 @@
     </div>
 
     <!-- МОДАЛЬНОЕ ОКНО: АВТОРИЗАЦИЯ И ОБЛАЧНАЯ СИНХРОНИЗАЦИЯ -->
+    <!-- Самочувствие перед тренировкой -->
+    <div id="readiness-modal" onclick="if (event.target === this) cancelReadiness()"
+        class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-zinc-950 border border-zinc-800 rounded-t-3xl sm:rounded-3xl w-full max-w-md p-5 space-y-4">
+            <div>
+                <h3 class="font-bold text-zinc-100 text-base">Как самочувствие перед тренировкой?</h3>
+                <p class="text-xs text-zinc-400 mt-1">Если плохо — план станет чуть легче (меньше подходов, вес немного ниже). Это можно отменить.</p>
+            </div>
+            <div id="readiness-scale" class="grid grid-cols-5 gap-2">
+                <button type="button" data-value="1" onclick="selectReadiness(1)" class="readiness-btn rounded-xl border border-zinc-800 bg-zinc-900 py-3 flex flex-col items-center gap-1"><span class="text-2xl">😫</span><span class="text-[9px] text-zinc-400">Очень плохо</span></button>
+                <button type="button" data-value="2" onclick="selectReadiness(2)" class="readiness-btn rounded-xl border border-zinc-800 bg-zinc-900 py-3 flex flex-col items-center gap-1"><span class="text-2xl">😕</span><span class="text-[9px] text-zinc-400">Плохо</span></button>
+                <button type="button" data-value="3" onclick="selectReadiness(3)" class="readiness-btn rounded-xl border border-zinc-800 bg-zinc-900 py-3 flex flex-col items-center gap-1"><span class="text-2xl">😐</span><span class="text-[9px] text-zinc-400">Нормально</span></button>
+                <button type="button" data-value="4" onclick="selectReadiness(4)" class="readiness-btn rounded-xl border border-zinc-800 bg-zinc-900 py-3 flex flex-col items-center gap-1"><span class="text-2xl">🙂</span><span class="text-[9px] text-zinc-400">Хорошо</span></button>
+                <button type="button" data-value="5" onclick="selectReadiness(5)" class="readiness-btn rounded-xl border border-zinc-800 bg-zinc-900 py-3 flex flex-col items-center gap-1"><span class="text-2xl">😄</span><span class="text-[9px] text-zinc-400">Отлично</span></button>
+            </div>
+            <div id="readiness-tags" class="flex flex-wrap gap-1.5"></div>
+            <div class="flex gap-2">
+                <button onclick="confirmReadiness()" class="flex-1 bg-brand hover:bg-brand-dark text-black font-bold py-3 rounded-xl text-sm">Начать тренировку</button>
+                <button onclick="skipReadiness()" class="px-4 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-xl text-sm">Пропустить</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Тренажёры упражнения -->
     <div id="machine-modal" onclick="if (event.target === this) closeMachineModal()"
         class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">

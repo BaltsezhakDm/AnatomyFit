@@ -241,6 +241,12 @@ db.version(10).stores({
     }
 });
 
+// Версия 11: самочувствие до/после тренировки (тренажёры и самочувствие — отдельные таблицы)
+db.version(11).stores({
+    sessionMeta: '++id, sessionId, updatedAt'
+});
+
+// Хуки регистрируются только после ВСЕХ объявлений версий: объявление новой версии пересоздаёт таблицы
 db.machines.hook('creating', function (primKey, obj) {
     if (!obj.uuid) obj.uuid = generateUUID();
     if (!obj.updatedAt) obj.updatedAt = Date.now();
@@ -285,6 +291,46 @@ export async function ensureMachine(exerciseId, preferredId = null) {
         base: 0,
     });
     return db.machines.get(id);
+}
+
+// Самочувствие до/после тренировки: тренировки существуют как набор подходов, поэтому метаданные — отдельная таблица (версия 11)
+db.sessionMeta.hook('creating', function (primKey, obj) {
+    if (!obj.updatedAt) obj.updatedAt = Date.now();
+});
+db.sessionMeta.hook('updating', function (modifications) {
+    return {
+        ...modifications,
+        updatedAt: modifications.updatedAt !== undefined ? modifications.updatedAt : Date.now()
+    };
+});
+
+export async function getSessionMeta(sessionId) {
+    const id = Number(sessionId);
+    if (!Number.isFinite(id)) return null;
+    return (await db.sessionMeta.where('sessionId').equals(id).first()) || null;
+}
+
+/** Создаёт или дополняет метаданные тренировки (самочувствие до/после, причины, заметка). */
+export async function saveSessionMeta(sessionId, fields) {
+    const id = Number(sessionId);
+    if (!Number.isFinite(id)) return null;
+    const existing = await db.sessionMeta.where('sessionId').equals(id).first();
+    if (existing) {
+        await db.sessionMeta.update(existing.id, fields);
+    } else {
+        await db.sessionMeta.add({ sessionId: id, ...fields });
+    }
+    return getSessionMeta(id);
+}
+
+/** Оценки «после» последних тренировок, от новых к старым (без текущей). */
+export async function getRecentPostFeelings(limit = 3, excludeSessionId = null) {
+    const all = await db.sessionMeta.toArray();
+    return all
+        .filter(m => m.feelingPost != null && m.sessionId !== Number(excludeSessionId))
+        .sort((a, b) => b.sessionId - a.sessionId)
+        .slice(0, limit)
+        .map(m => m.feelingPost);
 }
 
 let remoteChangeDepth = 0;

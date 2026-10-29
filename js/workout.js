@@ -1,4 +1,4 @@
-import { db, getBodyWeight, getRestDuration, EQUIPMENT_INFO, MOVEMENT_PATTERNS, getLocalDateString, ensureMachine, getMachines } from './db.js';
+import { db, getBodyWeight, getRestDuration, EQUIPMENT_INFO, MOVEMENT_PATTERNS, getLocalDateString, ensureMachine, getMachines, saveSessionMeta } from './db.js';
 import { updateStatistics, MUSCLE_NAMES } from './stats.js';
 import { getEffectiveWeight, calculate1RM } from './core/exercise.js';
 import { getProgressionAdvice } from './core/progression.js';
@@ -9,6 +9,7 @@ import { renderExercisePlan, resetPlanCache, recordProgramSessionDone, renderCyc
 import { renderMachineChip, openMachineModal } from './machines-ui.js';
 import { belongsToMachine, logLoad } from './core/machines.js';
 import { buildSessionSummary, showSessionSummary } from './session-summary.js';
+import { askReadiness } from './readiness-ui.js';
 import { parseLocalDate } from './core/dates.js';
 
 export let activeSession = null;
@@ -96,29 +97,28 @@ export function adjustValue(inputId, delta) {
 }
 
 export async function startWorkoutSession(isFree = false) {
-    if (isFree) {
-        activeSession = {
-            type: 'free',
-            name: 'Свободная тренировка',
-            exerciseIds: [],
-            sessionId: Date.now() // Убедимся, что sessionId сгенерирован
-        };
-    } else {
+    let routine = null;
+    if (!isFree) {
         const select = document.getElementById('start-routine-select');
         if (!select) return;
-        const routineId = parseInt(select.value);
-        const routine = await db.programs.get(routineId);
+        routine = await db.programs.get(parseInt(select.value));
         if (!routine) {
             showToast("Не удалось запустить программу", "error");
             return;
         }
-        activeSession = {
-            type: 'routine',
-            id: routine.id,
-            name: routine.name,
-            exerciseIds: routine.exerciseIds,
-            sessionId: Date.now()
-        };
+    }
+
+    // Самочувствие перед тренировкой: при плохом план станет мягче (поправку можно отменить в карточке плана)
+    const feeling = await askReadiness();
+    if (feeling === undefined) return; // окно закрыли — тренировку не начинаем
+
+    activeSession = isFree
+        ? { type: 'free', name: 'Свободная тренировка', exerciseIds: [], sessionId: Date.now() }
+        : { type: 'routine', id: routine.id, name: routine.name, exerciseIds: routine.exerciseIds, sessionId: Date.now() };
+    if (feeling.readiness !== null) {
+        activeSession.readiness = feeling.readiness;
+        activeSession.readinessTags = feeling.tags;
+        await saveSessionMeta(activeSession.sessionId, { readinessPre: feeling.readiness, preTags: feeling.tags });
     }
 
     resetPlanCache();

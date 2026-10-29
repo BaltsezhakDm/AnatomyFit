@@ -176,3 +176,19 @@ test('подход несёт UUID своего тренажёра (или null)
     assert.equal(mapLogToServer({ uuid: 'l', exerciseId: 1, sessionId: 1792787442600, weight: 1, reps: 1 }, exercises, 1, null, machines).machineId, null);
     assert.equal(mapLogToServer({ uuid: 'l', exerciseId: 1, machineId: 7, sessionId: 1792787442600, weight: 1, reps: 1 }, exercises).machineId, null);
 });
+
+test('сессия несёт самочувствие до/после, причины и заметку; пустые значения не отправляются; updatedAt учитывает метаданные', () => {
+    const logs = [{ sessionId: 1792787442600, updatedAt: 10 }];
+    const meta = new Map([[1792787442600, { readinessPre: 2, feelingPost: 4, preTags: ['sleep'], note: 'зашла тяжело', updatedAt: 50 }]]);
+    const [session] = buildSessions(logs, meta);
+    assert.deepEqual([session.readinessPre, session.feelingPost, session.preTags, session.comment, session.updatedAt], [2, 4, ['sleep'], 'зашла тяжело', 50]);
+
+    const [bare] = buildSessions(logs, new Map([[1792787442600, { readinessPre: 3, feelingPost: null, preTags: [], updatedAt: 5 }]]));
+    assert.equal(bare.readinessPre, 3);
+    assert.equal('feelingPost' in bare, false);
+    assert.equal('preTags' in bare, false);
+    assert.equal(bare.updatedAt, 10);
+
+    const [plain] = buildSessions(logs);
+    assert.equal('readinessPre' in plain, false);
+});

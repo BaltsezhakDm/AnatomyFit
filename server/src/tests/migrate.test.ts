@@ -44,7 +44,7 @@ test('база, созданная через drizzle-kit push (без журн�
   assert.ok(columns('programs').includes('plan'));
   // старые строки получают курсор = updated_at, чтобы попасть в полный pull
   assert.equal((sqlite.prepare("SELECT synced_at FROM workout_sets WHERE id = 'w1'").get() as { synced_at: number }).synced_at, 777);
-  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 3);
+  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 4);
   assert.ok((sqlite.prepare('SELECT COUNT(*) AS c FROM exercises WHERE user_id IS NULL').get() as { c: number }).c > 0, 'системные упражнения засеяны');
 });
 
@@ -54,7 +54,7 @@ test('повторный запуск идемпотентен: данные н�
   await prepareDatabase();
   assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM exercises').get() as { c: number }).c, before);
   assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM users').get() as { c: number }).c, 1);
-  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 3);
+  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 4);
 });
 
 test.after(() => {

@@ -147,7 +147,10 @@ export const workoutSessions = sqliteTable('workout_sessions', {
     .notNull(),
   startedAt: integer('started_at').notNull(), // Unix timestamp (ms)
   endedAt: integer('ended_at'), // Unix timestamp (ms)
-  feeling: text('feeling'), // 'great', 'good', 'normal', 'tired', 'exhausted'
+  feeling: text('feeling'), // устарело: заменено числовыми оценками ниже
+  readinessPre: integer('readiness_pre'), // самочувствие до тренировки, 1-5
+  feelingPost: integer('feeling_post'), // как прошла тренировка, 1-5 (1 — на износ, 5 — слишком легко)
+  preTags: text('pre_tags'), // JSON-массив причин (sleep, sore, pain, stress, ill)
   totalDurationSec: integer('total_duration_sec'),
   comment: text('comment'),
   updatedAt: integer('updated_at').notNull(),

@@ -18,7 +18,7 @@ const migrationsDir = path.resolve('drizzle');
 const migrations = readMigrationFiles({ migrationsFolder: migrationsDir });
 const sqlFiles = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
 
-test('прод на второй миграции (журнал 0000+0001) при обновлении получает тренажёры, данные сохраняются', async () => {
+test('прод на второй миграции (журнал 0000+0001) при обновлении получает тренажёры и самочувствие, данные сохраняются', async () => {
   // Состояние развёрнутого сервера до обновления: применены миграции 0000 и 0001, журнал ведётся drizzle
   sqlite.exec('CREATE TABLE "__drizzle_migrations" (id INTEGER PRIMARY KEY AUTOINCREMENT, hash text NOT NULL, created_at numeric)');
   for (let i = 0; i < 2; i++) {
@@ -39,7 +39,9 @@ test('прод на второй миграции (журнал 0000+0001) пр�
   assert.ok(sqlite.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='machines'").get(), 'таблица machines создана');
   const columns = (sqlite.prepare('PRAGMA table_info(workout_sets)').all() as { name: string }[]).map(c => c.name);
   assert.ok(columns.includes('machine_id'));
-  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 3);
+  const sessionColumns = (sqlite.prepare('PRAGMA table_info(workout_sessions)').all() as { name: string }[]).map(c => c.name);
+  for (const column of ['readiness_pre', 'feeling_post', 'pre_tags']) assert.ok(sessionColumns.includes(column), column);
+  assert.equal((sqlite.prepare('SELECT COUNT(*) AS c FROM __drizzle_migrations').get() as { c: number }).c, 4);
   const set = sqlite.prepare("SELECT weight, machine_id FROM workout_sets WHERE id = 'w1'").get() as { weight: number; machine_id: string | null };
   assert.deepEqual([set.weight, set.machine_id], [50, null], 'старые подходы без тренажёра сохранились');
 });

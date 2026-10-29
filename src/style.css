@@ -139,3 +139,15 @@ textarea:focus:not(:focus-visible) {
   border-color: rgb(16 185 129 / 0.5);
   color: #34d399;
 }
+
+/* Выбранные значения шкал самочувствия */
+.readiness-btn.is-selected,
+.feeling-btn.is-selected {
+  background: rgb(16 185 129 / 0.15);
+  border-color: rgb(16 185 129 / 0.5);
+}
+.readiness-tag.is-selected {
+  background: rgb(245 158 11 / 0.15);
+  border-color: rgb(245 158 11 / 0.5);
+  color: #fbbf24;
+}

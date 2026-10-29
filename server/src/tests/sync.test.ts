@@ -349,3 +349,49 @@ test('удаление тренажёра (deletedAt) доходит до pull; 
   const pulled = (await t.sync(alice, {}, 0)).json().pull.machines.find((m: { id: string }) => m.id === id);
   assert.equal(pulled.deletedAt, 200);
 });
+
+// ---------- самочувствие до и после тренировки ----------
+
+test('самочувствие до/после и причины сохраняются в сессии и возвращаются в pull', async () => {
+  const alice = await t.register('alice');
+  const sessionId = uuid();
+  const res = await t.sync(alice, {
+    workoutSessions: [{ id: sessionId, name: 'Тренировка', readinessPre: 2, feelingPost: 4, preTags: ['sleep', 'sore'], comment: 'тяжело зашла', updatedAt: 10 }],
+  });
+  assert.deepEqual(res.json().rejected, []);
+  const session = (await t.sync(alice, {}, 0)).json().pull.workoutSessions.find((s: { id: string }) => s.id === sessionId);
+  assert.deepEqual([session.readinessPre, session.feelingPost, session.preTags, session.comment], [2, 4, ['sleep', 'sore'], 'тяжело зашла']);
+});
+
+test('оценка после тренировки добавляется второй отправкой; клиент без оценок их не затирает', async () => {
+  const alice = await t.register('alice');
+  const sessionId = uuid();
+  await t.sync(alice, { workoutSessions: [{ id: sessionId, readinessPre: 3, updatedAt: 10 }] });
+  await t.sync(alice, { workoutSessions: [{ id: sessionId, readinessPre: 3, feelingPost: 5, updatedAt: 20 }] });
+  await t.sync(alice, { workoutSessions: [{ id: sessionId, name: 'Старый клиент', updatedAt: 30 }] });
+  const row = t.sqlite.prepare('SELECT readiness_pre r, feeling_post f, name FROM workout_sessions WHERE id = ?').get(sessionId) as { r: number; f: number; name: string };
+  assert.deepEqual([row.r, row.f, row.name], [3, 5, 'Старый клиент']);
+});
+
+test('оценки вне диапазона 1–5 и лишние причины отклоняются, остальные строки применяются', async () => {
+  const alice = await t.register('alice');
+  const ok = uuid();
+  const res = await t.sync(alice, {
+    workoutSessions: [
+      { id: uuid(), readinessPre: 0, updatedAt: 1 },
+      { id: uuid(), feelingPost: 6, updatedAt: 1 },
+      { id: uuid(), preTags: new Array(11).fill('x'), updatedAt: 1 },
+      { id: ok, readinessPre: 5, updatedAt: 1 },
+    ],
+  });
+  assert.equal(rejectedFor(res, 'workoutSessions').length, 3);
+  assert.ok(t.sqlite.prepare('SELECT 1 FROM workout_sessions WHERE id = ?').get(ok));
+});
+
+test('чужую сессию нельзя перезаписать оценками', async () => {
+  const { alice, bob, sessionId } = await setup();
+  await t.sync(alice, { workoutSessions: [{ id: sessionId, readinessPre: 4, updatedAt: 2000 }] });
+  await t.sync(bob, { workoutSessions: [{ id: sessionId, readinessPre: 1, feelingPost: 1, updatedAt: 9e12 }] });
+  const row = t.sqlite.prepare('SELECT readiness_pre r, feeling_post f FROM workout_sessions WHERE id = ?').get(sessionId) as { r: number; f: number | null };
+  assert.deepEqual([row.r, row.f], [4, null]);
+});

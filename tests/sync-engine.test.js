@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 
-const { db, withRemoteChanges } = await import('../js/db.js');
+const { db, withRemoteChanges, saveSessionMeta, getSessionMeta, getRecentPostFeelings } = await import('../js/db.js');
 const { collectPush, applyPull } = await import('../js/sync-engine.js');
 const { sessionUuidFromLocalId } = await import('../js/core/sync-mapping.js');
 
@@ -12,7 +12,7 @@ const tick = () => new Promise(r => setTimeout(r, 15)); // tombstone пишет�
 
 beforeEach(async () => {
     // clear() тоже вызывает хуки удаления (tombstones пишутся асинхронно), поэтому журнал чистим последним и после паузы
-    for (const table of [db.exercises, db.workoutLogs, db.programs, db.bodyWeightLogs, db.machines]) await table.clear();
+    for (const table of [db.exercises, db.workoutLogs, db.programs, db.bodyWeightLogs, db.machines, db.sessionMeta]) await table.clear();
     await tick();
     await db.tombstones.clear();
 });
@@ -280,4 +280,56 @@ test('удаление тренажёра локально уходит в push 
     const { push } = await collectPush(Number.MAX_SAFE_INTEGER);
     const sent = push.machines.find(m => m.id === machine.uuid);
     assert.ok(sent && sent.deletedAt);
+});
+
+test('самочувствие: метаданные тренировки сохраняются, дополняются и читаются; последние оценки «после» — от новых к старым', async () => {
+    await saveSessionMeta(1000, { readinessPre: 2, preTags: ['sleep'] });
+    await saveSessionMeta(1000, { feelingPost: 4 });
+    const meta = await getSessionMeta(1000);
+    assert.deepEqual([meta.readinessPre, meta.preTags, meta.feelingPost], [2, ['sleep'], 4]);
+    assert.equal(await db.sessionMeta.count(), 1, 'повторное сохранение обновляет запись');
+    await saveSessionMeta(2000, { feelingPost: 1 });
+    await saveSessionMeta(3000, { readinessPre: 5 }); // без оценки «после» — не в списке
+    await saveSessionMeta(4000, { feelingPost: 5 });
+    assert.deepEqual(await getRecentPostFeelings(3), [5, 1, 4]);
+    assert.deepEqual(await getRecentPostFeelings(3, 4000), [1, 4], 'текущая тренировка исключается');
+    assert.equal(await getSessionMeta('нет'), null);
+});
+
+test('самочувствие уходит в push вместе с сессией, а изменение только метаданных отправляет сессию заново', async () => {
+    const ex = await seedExercise();
+    const sessionId = 1792787442600;
+    await db.workoutLogs.add({ date: '2026-01-01', exerciseId: ex.id, weight: 50, reps: 8, sessionId });
+    await saveSessionMeta(sessionId, { readinessPre: 2, preTags: ['sore'] });
+    const first = (await collectPush(0)).push.workoutSessions.find(s => s.id === sessionUuidFromLocalId(sessionId));
+    assert.deepEqual([first.readinessPre, first.preTags], [2, ['sore']]);
+
+    // подходы старше курсора, а оценку «после» поставили позже — сессия всё равно уходит
+    const meta = await getSessionMeta(sessionId);
+    await saveSessionMeta(sessionId, { feelingPost: 5 });
+    const cursor = meta.updatedAt + 1;
+    const { push } = await collectPush(cursor);
+    assert.equal(push.workoutSets.length, 0, 'подходы не менялись');
+    const resent = push.workoutSessions.find(s => s.id === sessionUuidFromLocalId(sessionId));
+    assert.equal(resent.feelingPost, 5);
+});
+
+test('pull: самочувствие с другого устройства применяется, более старая версия не затирает локальную; сессия без оценок игнорируется', async () => {
+    const sessionId = 1792787442600;
+    const remote = (fields, updatedAt) => ({ workoutSessions: [{ id: sessionUuidFromLocalId(sessionId), updatedAt, ...fields }] });
+
+    await applyPull(remote({ readinessPre: 2, feelingPost: null, preTags: ['pain'], comment: 'колено' }, 100));
+    let meta = await getSessionMeta(sessionId);
+    assert.deepEqual([meta.readinessPre, meta.preTags, meta.note], [2, ['pain'], 'колено']);
+
+    await applyPull(remote({ readinessPre: 5, preTags: [] }, 50));
+    assert.equal((await getSessionMeta(sessionId)).readinessPre, 2, 'более старая версия не применяется');
+
+    await applyPull(remote({ readinessPre: 2, feelingPost: 3, preTags: ['pain'] }, 200));
+    meta = await getSessionMeta(sessionId);
+    assert.equal(meta.feelingPost, 3);
+
+    const before = await db.sessionMeta.count();
+    await applyPull({ workoutSessions: [{ id: sessionUuidFromLocalId(1792787999999), name: 'Тренировка', updatedAt: 1 }] });
+    assert.equal(await db.sessionMeta.count(), before, 'сессия без оценок метаданных не создаёт');
 });
