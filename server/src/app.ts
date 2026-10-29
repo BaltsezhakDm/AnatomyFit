@@ -55,16 +55,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     },
   });
 
-  // 4. Раздача медиафайлов (/uploads)
+  // 4. Каталог медиафайлов. Публично НЕ раздаётся: файлы отдаёт только авторизованный GET /api/v1/media/file/:id владельцу
   if (!fs.existsSync(config.upload.dir)) {
     fs.mkdirSync(config.upload.dir, { recursive: true });
   }
-
-  await app.register(fastifyStatic, {
-    root: config.upload.dir,
-    prefix: '/uploads/',
-    decorateReply: false,
-  });
 
   // 4a. Фронтенд (PWA): service worker и index.html не кэшируем, иначе обновления приложения не доезжают до клиентов
   if (config.webDir && fs.existsSync(config.webDir)) {

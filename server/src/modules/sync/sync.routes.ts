@@ -12,6 +12,7 @@ import {
   userSettings,
 } from '../../db/schema.js';
 import { authenticate } from '../../middleware/auth.js';
+import { deleteEntityMedia } from '../media/media.routes.js';
 
 const id = z.string().min(1).max(64);
 const timestamp = z.number().finite().nonnegative().nullish();
@@ -401,7 +402,7 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       `);
       applyRows('machines', push.machines, m => {
         if (!canUseExercise.get(m.exerciseId, userId)) return 'forbidden';
-        upsertMachine.run(
+        const result = upsertMachine.run(
           m.id,
           userId,
           m.exerciseId,
@@ -416,6 +417,8 @@ export const syncRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
           m.deletedAt || null,
           userId
         );
+        // Удалённый тренажёр уносит с собой фото (файлы на диске и записи)
+        if (result.changes > 0 && m.deletedAt) deleteEntityMedia(userId, 'machine', m.id);
       });
 
       // Д. Тренировочные сессии

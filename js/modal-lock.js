@@ -8,6 +8,7 @@ const MODAL_IDS = [
     'session-summary-modal',
     'machine-modal',
     'readiness-modal',
+    'photo-viewer-modal',
 ];
 
 /**

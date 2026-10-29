@@ -13,6 +13,8 @@ const PUSH_CURSOR_KEY = 'anatomyfit_last_push'; // локальное время
 const SYNC_USER_KEY = 'anatomyfit_sync_user';
 const SETS_PER_REQUEST = 500;
 
+// Объявлено ДО подписок ниже: onAuthStateChanged вызывает колбэк сразу, и triggerSync читает этот флаг (иначе TDZ-ошибка при входе)
+let isSyncInProgress = false;
 let syncStatus = 'local'; // 'synced' | 'syncing' | 'offline' | 'error' | 'local'
 let lastSyncTime = readNumber(PULL_CURSOR_KEY);
 let lastDeferred = 0;
@@ -55,8 +57,6 @@ onAuthStateChanged((user) => {
     setSyncStatus('local');
   }
 });
-
-let isSyncInProgress = false;
 
 /** Запуск синхронизации с защитой от параллельных вызовов */
 export async function triggerSync() {
@@ -137,8 +137,10 @@ async function performDeltaSync() {
 }
 
 // Автоматический периодический синк каждые 5 минут
-setInterval(() => {
+const periodicSync = setInterval(() => {
   if (navigator.onLine && isAuthenticated()) {
     triggerSync();
   }
 }, 5 * 60 * 1000);
+// В Node (тесты) таймер не должен удерживать процесс; в браузере setInterval возвращает число — unref нет
+if (periodicSync && typeof periodicSync.unref === 'function') periodicSync.unref();

@@ -7,6 +7,7 @@ import { db, getMachines, getBodyWeight } from './db.js';
 import { showToast, showConfirm } from './ui.js';
 import { MACHINE_KINDS, estimateFactor } from './core/machines.js';
 import { syncModalLock } from './modal-lock.js';
+import { canUsePhotos, uploadMachinePhoto, listMachinePhotos, getPhotoUrl, deleteMachinePhoto } from './media.js';
 
 function escapeHtml(str) {
     return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -25,6 +26,117 @@ export function describeMachine(machine) {
     return `${step} · ${factor}`;
 }
 
+/** Миниатюра первого фото тренажёра рядом с названием (если есть вход и сеть). */
+async function loadChipPhoto(machine) {
+    const img = document.getElementById('machine-chip-photo');
+    if (!img) return;
+    img.classList.add('hidden');
+    if (!canUsePhotos() || !machine?.uuid) return;
+    try {
+        const [first] = await listMachinePhotos(machine.uuid);
+        if (!first) return;
+        const url = await getPhotoUrl(first.id);
+        // за время загрузки могли переключить тренажёр
+        if (document.querySelector('#machine-chip [data-role="name"]')?.textContent !== machine.name) return;
+        img.src = url;
+        img.classList.remove('hidden');
+    } catch {
+        /* нет сети — миниатюры просто не будет */
+    }
+}
+
+// ---------- Фото тренажёров ----------
+
+let viewedPhoto = null; // { id, machineId }
+
+async function renderPhotoStrip(machine) {
+    const strip = document.querySelector(`[data-photo-strip="${machine.id}"]`);
+    if (!strip) return;
+    if (!canUsePhotos()) {
+        strip.innerHTML = '<div class="text-[10px] text-zinc-600">Войдите в аккаунт, чтобы сохранять фото тренажёра</div>';
+        return;
+    }
+    const photos = await listMachinePhotos(machine.uuid);
+    const thumbs = await Promise.all(photos.map(async p => {
+        try {
+            return `<button onclick="window.openPhotoViewer('${p.id}', ${machine.id})" class="w-14 h-14 rounded-lg overflow-hidden border border-zinc-800 flex-shrink-0"><img src="${await getPhotoUrl(p.id)}" alt="" class="w-full h-full object-cover"></button>`;
+        } catch {
+            return '';
+        }
+    }));
+    strip.innerHTML = `
+        <div class="flex gap-1.5 overflow-x-auto items-center">
+            ${thumbs.join('')}
+            <button onclick="window.pickMachinePhoto(${machine.id})" class="w-14 h-14 rounded-lg border border-dashed border-zinc-700 text-zinc-500 hover:text-brand hover:border-brand/40 flex-shrink-0 flex flex-col items-center justify-center text-[10px] leading-tight" aria-label="Добавить фото">
+                <span class="text-lg leading-none">＋</span>фото
+            </button>
+        </div>
+        <input type="file" accept="image/*" capture="environment" class="hidden" id="photo-input-${machine.id}" onchange="window.onMachinePhotoSelected(${machine.id}, this)">`;
+}
+
+export function pickMachinePhoto(machineId) {
+    document.getElementById(`photo-input-${machineId}`)?.click();
+}
+
+export async function onMachinePhotoSelected(machineId, input) {
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    const machine = await db.machines.get(machineId);
+    if (!machine) return;
+    const strip = document.querySelector(`[data-photo-strip="${machineId}"]`);
+    if (strip) strip.insertAdjacentHTML('afterbegin', '<div class="text-[10px] text-zinc-500 mb-1">Загрузка фото…</div>');
+    try {
+        await uploadMachinePhoto(machine, file);
+        showToast('Фото сохранено', 'success');
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+    await renderPhotoStrip(machine);
+    if (modalContext?.currentId === machineId) loadChipPhoto(machine);
+}
+
+export async function openPhotoViewer(mediaId, machineId) {
+    const img = document.getElementById('photo-viewer-img');
+    const modal = document.getElementById('photo-viewer-modal');
+    if (!img || !modal) return;
+    try {
+        img.src = await getPhotoUrl(mediaId);
+    } catch (e) {
+        showToast(e.message, 'error');
+        return;
+    }
+    viewedPhoto = { id: mediaId, machineId };
+    modal.classList.remove('hidden');
+    syncModalLock();
+}
+
+export function closePhotoViewer() {
+    const modal = document.getElementById('photo-viewer-modal');
+    if (modal) modal.classList.add('hidden');
+    syncModalLock();
+    viewedPhoto = null;
+}
+
+export async function deleteViewedPhoto() {
+    if (!viewedPhoto) return;
+    const { id, machineId } = viewedPhoto;
+    const ok = await showConfirm('Удалить это фото?');
+    if (!ok) return;
+    try {
+        await deleteMachinePhoto(id);
+    } catch (e) {
+        showToast(e.message, 'error');
+        return;
+    }
+    closePhotoViewer();
+    const machine = await db.machines.get(machineId);
+    if (machine) {
+        await renderPhotoStrip(machine);
+        if (modalContext?.currentId === machineId) loadChipPhoto(machine);
+    }
+}
+
 let modalContext = null; // { exerciseId, currentId, onSelect, editingId }
 
 /** Строка «Тренажёр: …» над планом упражнения. */
@@ -36,6 +148,7 @@ export function renderMachineChip(machine, machineCount) {
         return;
     }
     chip.classList.remove('hidden');
+    loadChipPhoto(machine);
     chip.querySelector('[data-role="name"]').textContent = machine.name;
     chip.querySelector('[data-role="details"]').textContent = `${describeMachine(machine)}${machineCount > 1 ? ` · всего ${machineCount}` : ''}`;
 }
@@ -77,6 +190,7 @@ async function renderMachineModal() {
                     <div class="text-[10px] text-zinc-600">${used} ${used === 1 ? 'подход' : 'подходов'} · коэффициент ${escapeHtml(FACTOR_SOURCE_TEXT[m.factorSource] || '')}</div>
                 </div>
             </div>
+            <div data-photo-strip="${m.id}"></div>
             <div class="flex gap-2">
                 ${isCurrent ? '' : `<button onclick="window.selectMachine(${m.id})" class="flex-1 bg-brand/10 text-brand text-xs font-bold py-2 rounded-lg">Выбрать</button>`}
                 <button onclick="window.editMachine(${m.id})" class="flex-1 bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs font-semibold py-2 rounded-lg">Изменить</button>
@@ -89,6 +203,9 @@ async function renderMachineModal() {
         <div class="text-xs text-zinc-400">${escapeHtml(exercise?.name || '')}. Вес, шаг прибавки и коэффициент рычага считаются отдельно для каждого тренажёра.</div>
         <div class="space-y-2">${rows || '<div class="text-xs text-zinc-500">Тренажёров пока нет.</div>'}</div>
         <div id="machine-form-container">${machineFormHtml(null)}</div>`;
+
+    // Фото подгружаются после отрисовки списка (нужна сеть и вход в аккаунт)
+    for (const m of machines) renderPhotoStrip(m);
 }
 
 function machineFormHtml(machine) {
@@ -237,6 +354,11 @@ export async function applyFactorEstimate(machineId, factor, { silent = false } 
     if (!silent) showToast(`Коэффициент тренажёра: ×${factor}`, 'success');
 }
 
+window.pickMachinePhoto = pickMachinePhoto;
+window.onMachinePhotoSelected = onMachinePhotoSelected;
+window.openPhotoViewer = openPhotoViewer;
+window.closePhotoViewer = closePhotoViewer;
+window.deleteViewedPhoto = deleteViewedPhoto;
 window.closeMachineModal = closeMachineModal;
 window.editMachine = editMachine;
 window.cancelMachineEdit = cancelMachineEdit;

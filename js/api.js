@@ -66,7 +66,8 @@ export async function apiFetch(endpoint, options = {}) {
     ...options.headers,
   };
 
-  if (!(options.body instanceof FormData)) {
+  // Content-Type выставляется только когда есть тело: Fastify отвечает 400 на запрос с JSON-типом и пустым телом (DELETE, POST без тела)
+  if (options.body !== undefined && options.body !== null && !(options.body instanceof FormData)) {
     headers['Content-Type'] = headers['Content-Type'] || 'application/json';
   }
 

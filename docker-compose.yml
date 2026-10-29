@@ -41,7 +41,6 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./dist:/srv:ro
-      - ./server/uploads:/uploads:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

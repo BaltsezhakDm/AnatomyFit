@@ -20,11 +20,7 @@
         reverse_proxy api:3001
     }
 
-    # Раздача загруженных медиафайлов (фото / видео)
-    handle /uploads/* {
-        root * /uploads
-        file_server
-    }
+    # Загруженные фото публично не раздаются: их отдаёт API (/api/v1/media/file/:id) только владельцу
 
     # Раздача статики PWA (HTML, JS, CSS); service worker и index.html не кэшируем
     handle {

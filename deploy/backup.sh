@@ -6,7 +6,8 @@ set -euo pipefail
 CONTAINER="${CONTAINER:-anatomyfit_api}"
 APP_DIR="${APP_DIR:-/opt/afit}"
 BACKUP_DIR="${BACKUP_DIR:-$APP_DIR/backups}"
-KEEP="${KEEP:-14}" # сколько последних копий хранить
+KEEP="${KEEP:-14}" # сколько последних копий базы хранить
+UPLOADS_KEEP="${UPLOADS_KEEP:-3}" # сколько последних архивов фото хранить
 
 STAMP="$(date +%Y-%m-%d_%H%M%S)"
 TMP_NAME=".backup-$STAMP.sqlite"
@@ -33,14 +34,18 @@ db.backup(dst).then(() => {
 mv "$APP_DIR/server/data/$TMP_NAME" "$BACKUP_DIR/anatomyfit-$STAMP.sqlite"
 gzip -f "$BACKUP_DIR/anatomyfit-$STAMP.sqlite"
 
-# 3. Загруженные медиафайлы — только если они есть
+# 3. Загруженные фото: архив делается только если что-то менялось с прошлого архива (фото неизменяемы), иначе
+#    каждая из ежедневных копий дублировала бы одни и те же файлы
+LAST_UPLOADS="$(ls -1t "$BACKUP_DIR"/uploads-*.tar.gz 2>/dev/null | head -n 1 || true)"
 if [ -n "$(find "$APP_DIR/server/uploads" -type f -print -quit 2>/dev/null)" ]; then
-  tar -czf "$BACKUP_DIR/uploads-$STAMP.tar.gz" -C "$APP_DIR/server" uploads
+  if [ -z "$LAST_UPLOADS" ] || [ -n "$(find "$APP_DIR/server/uploads" -newer "$LAST_UPLOADS" -print -quit 2>/dev/null)" ]; then
+    tar -czf "$BACKUP_DIR/uploads-$STAMP.tar.gz" -C "$APP_DIR/server" uploads
+  fi
 fi
 
 # 4. Ротация: оставляем KEEP последних копий каждого вида
-for pattern in 'anatomyfit-*.sqlite.gz' 'uploads-*.tar.gz'; do
-  { ls -1t "$BACKUP_DIR"/$pattern 2>/dev/null || true; } | tail -n +"$((KEEP + 1))" | xargs -r rm --
-done
+{ ls -1t "$BACKUP_DIR"/anatomyfit-*.sqlite.gz 2>/dev/null || true; } | tail -n +"$((KEEP + 1))" | xargs -r rm --
+# Архивы фото тяжёлые — хранится только несколько последних
+{ ls -1t "$BACKUP_DIR"/uploads-*.tar.gz 2>/dev/null || true; } | tail -n +"$((UPLOADS_KEEP + 1))" | xargs -r rm --
 
 echo "$(date -Is) готово: $BACKUP_DIR/anatomyfit-$STAMP.sqlite.gz ($(du -h "$BACKUP_DIR/anatomyfit-$STAMP.sqlite.gz" | cut -f1))"

@@ -43,7 +43,12 @@ export const config = {
 
   upload: {
     dir: path.resolve(process.cwd(), process.env.UPLOAD_DIR || 'uploads'),
-    maxFileSizeBytes: parseInt(process.env.MAX_FILE_SIZE_BYTES || '104857600', 10), // 100 MB default
+    maxFileSizeBytes: parseInt(process.env.MAX_FILE_SIZE_BYTES || '104857600', 10), // 100 MB default (видео)
+    // Фото: клиент сжимает до ~300 КБ, поэтому серверный лимит жёсткий — отсекает несжатые оригиналы и мусор
+    maxImageBytes: parseInt(process.env.MAX_IMAGE_BYTES || String(8 * 1024 * 1024), 10),
+    // Суммарный объём файлов одного пользователя и число фото на одну сущность (диск сервера ограничен)
+    userQuotaBytes: parseInt(process.env.MEDIA_QUOTA_BYTES || String(200 * 1024 * 1024), 10),
+    maxPhotosPerEntity: parseInt(process.env.MAX_PHOTOS_PER_ENTITY || '6', 10),
     allowedMediaTypes: (process.env.ALLOWED_MEDIA_TYPES || 'image/jpeg,image/png,image/webp,video/mp4,video/webm').split(','),
   },
 

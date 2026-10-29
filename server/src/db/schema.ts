@@ -260,7 +260,7 @@ export const mediaFiles = sqliteTable('media_files', {
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
   entityType: text('entity_type', {
-    enum: ['exercise', 'workout_set', 'workout_session', 'body_measurement', 'avatar'],
+    enum: ['exercise', 'workout_set', 'workout_session', 'body_measurement', 'avatar', 'machine'],
   }).notNull(),
   entityId: text('entity_id').notNull(), // ID упражнения, сета, замера или пользователя
   mediaType: text('media_type', {
